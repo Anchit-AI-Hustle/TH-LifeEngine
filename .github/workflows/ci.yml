@@ -9,7 +9,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with: { node-version: 20, cache: npm }
-      - run: npm ci
+      # Preserve the dependency graph already captured in package-lock.json while
+      # allowing npm to resolve the repository's known peer-version bridge.
+      - run: npm ci --legacy-peer-deps
       - run: npm run typecheck || echo "::warning::typecheck has known issues — tracked in ISSUES.md S0.3"
       - run: npm run build
         env:
