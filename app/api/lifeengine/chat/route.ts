@@ -157,7 +157,7 @@ Respond as a helpful wellness coach who knows their profile and goals.`;
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Invalid request data", details: error.errors },
+        { error: "Invalid request data", details: error.issues },
         { status: 400 }
       );
     }
