@@ -9,7 +9,6 @@
     "moduleResolution": "Bundler",
     "jsx": "preserve",
     "strict": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./*"
