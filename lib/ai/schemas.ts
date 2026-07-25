@@ -18,7 +18,7 @@ export const IntakeSchema = z.object({
   secondaryPlanType: z.string().optional(),
   startDate: z.string(), // ISO date
   endDate: z.string(), // ISO date
-  preferences: z.record(z.any()), // flexible object for preferences
+  preferences: z.record(z.string(), z.any()), // flexible object for preferences
 });
 
 export const PlanSchema = z.object({
