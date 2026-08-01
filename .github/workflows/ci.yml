@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with: { node-version: 20, cache: npm }
       # Preserve the dependency graph already captured in package-lock.json while
       # allowing npm to resolve the repository's known peer-version bridge.
