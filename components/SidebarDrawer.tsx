@@ -62,6 +62,18 @@ export default function SidebarDrawer({ isOpen, onClose, className = '' }: Sideb
             </svg>
             Dashboard
           </NavLink>
+          <NavLink href="/lifeengine/fitness">
+            <svg className={styles.icon} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6.5 6.5h2v11h-2v-11zm9 0h2v11h-2v-11zM4 9h1.5v6H4V9zm14.5 0H20v6h-1.5V9zM8.5 11h7v2h-7v-2z"/>
+            </svg>
+            Fitness &amp; Health
+          </NavLink>
+          <NavLink href="/lifeengine/fitness/tracker">
+            <svg className={styles.icon} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 17l5-5 4 4 5-7 4 5v3H3v-0z"/>
+            </svg>
+            Activity Tracker
+          </NavLink>
         </nav>
       </aside>
     </div>

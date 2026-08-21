@@ -9,6 +9,10 @@ const NAV:[string,string][]= [
   ["/lifeengine/create","Create Plan - Gemini"],
   ["/use-custom-gpt","Create Plan - Custom GPT"],
   ["/lifeengine/dashboard","Dashboard"],
+  ["/lifeengine/fitness","Fitness & Health"],
+  ["/lifeengine/fitness/planner","Activity Plan"],
+  ["/lifeengine/fitness/tracker","Activity Tracker"],
+  ["/lifeengine/fitness/activities","Activity Library"],
   ["/lifeengine/settings","Settings"]
 ];
 
