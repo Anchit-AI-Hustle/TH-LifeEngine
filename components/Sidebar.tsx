@@ -31,6 +31,15 @@ export default function Sidebar({ className = '' }: { className?: string }) {
         <NavLink href="/lifeengine/habits" className={styles.navLink}>
           Habit Tracker
         </NavLink>
+        <NavLink href="/lifeengine/fitness" className={styles.navLink}>
+          Fitness &amp; Health
+        </NavLink>
+        <NavLink href="/lifeengine/fitness/planner" className={styles.navLink}>
+          Activity Plan
+        </NavLink>
+        <NavLink href="/lifeengine/fitness/tracker" className={styles.navLink}>
+          Activity Tracker
+        </NavLink>
         <NavLink href="/lifeengine/custom-gpt" className={styles.navLink}>
           Using Custom GPT
         </NavLink>
