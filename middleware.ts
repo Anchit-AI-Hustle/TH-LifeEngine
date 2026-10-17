@@ -15,16 +15,15 @@ const PUBLIC_PATHS = [
   '/favicon.ico',
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if path is public
   const isPublicPath = PUBLIC_PATHS.some(path => pathname.startsWith(path));
+  const authenticated = await isRequestAuthenticated(request);
 
   // If not a public path, check authentication
   if (!isPublicPath) {
-    const authenticated = isRequestAuthenticated(request);
-    
     if (!authenticated) {
       // Redirect to login page
       const loginUrl = new URL('/login', request.url);
@@ -34,7 +33,7 @@ export function middleware(request: NextRequest) {
   }
 
   // If authenticated and trying to access login page, redirect to home
-  if (pathname === '/login' && isRequestAuthenticated(request)) {
+  if (pathname === '/login' && authenticated) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
