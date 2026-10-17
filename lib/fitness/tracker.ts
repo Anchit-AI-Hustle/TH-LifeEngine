@@ -418,7 +418,7 @@ export function summariseTracker(
       const current = (() => {
         switch (metric) {
           case "weight":
-            return trends.weight.at(-1)?.value ?? profile.weightKg;
+            return trends.weight[trends.weight.length - 1]?.value ?? profile.weightKg;
           case "waist":
             return profile.waistCm ?? null;
           case "steps":
