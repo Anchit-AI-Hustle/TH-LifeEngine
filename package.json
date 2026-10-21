@@ -31,7 +31,7 @@
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "lucide-react": "^1.33.0",
-    "next": "^14.2.33",
+    "next": "^16.3.2",
     "openai": "^4.73.1",
     "pdf-lib": "^1.17.1",
     "pg": "^8.21.0",
@@ -48,6 +48,6 @@
     "autoprefixer": "^10.5.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
-    "typescript": "6.0.3"
+    "typescript": "^7.0.2"
   }
 }
