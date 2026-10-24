@@ -1,24 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { clearSessionCookie } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { SESSION_COOKIE, sessionCookieOptions } from '@/lib/auth/session';
 
-export async function POST(req: NextRequest) {
-  try {
-    // Clear session cookie
-    await clearSessionCookie();
+export const dynamic = 'force-dynamic';
 
-    console.log('[Auth] User logged out:', {
-      timestamp: new Date().toISOString(),
-    });
-
-    return NextResponse.json(
-      { success: true, message: 'Logged out successfully' },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('[Auth] Logout error:', error);
-    return NextResponse.json(
-      { error: 'An error occurred during logout' },
-      { status: 500 }
-    );
-  }
+export function POST() {
+  const res = NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+  res.cookies.set(SESSION_COOKIE, '', { ...sessionCookieOptions(), maxAge: 0 });
+  return res;
 }

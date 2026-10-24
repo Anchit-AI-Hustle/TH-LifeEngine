@@ -47,22 +47,17 @@ nano .env
 GOOGLE_API_KEY=your_actual_api_key_here
 ```
 
-### 2. Enable Authentication (Optional)
-To enable API authentication:
+### 2. Sign-in (4-digit PIN)
+The app has one way in: a 4-digit PIN, checked on the server. Only its scrypt
+hash is stored, in the `APP_PIN_HASH` server env var. Without it, sign-in stays closed.
 ```bash
-# Rename the auth middleware
-mv middleware-auth.ts middleware.ts
-
-# Set your API key
-echo "API_KEY=your-secure-api-key-here" >> .env
+# Print the value to set (pick a PIN that is not easy to guess)
+printf 4827 | node scripts/pin-hash.mjs
+# Put the printed salt:hash in APP_PIN_HASH on the server (Vercel project env), then redeploy
 ```
-
-### 3. Testing with Authentication
-```bash
-# Test API call with authentication
-curl -H "x-api-key: lifeengine-dev-key-2025" \
-     http://localhost:3000/api/lifeengine/profiles
-```
+After 5 wrong tries, sign-in locks for 15 minutes. Set `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` (or the Vercel KV `KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+to share the count across all server instances.
 
 ---
 

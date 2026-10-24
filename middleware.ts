@@ -15,16 +15,15 @@ const PUBLIC_PATHS = [
   '/favicon.ico',
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if path is public
   const isPublicPath = PUBLIC_PATHS.some(path => pathname.startsWith(path));
+  const authenticated = await isRequestAuthenticated(request);
 
   // If not a public path, check authentication
   if (!isPublicPath) {
-    const authenticated = isRequestAuthenticated(request);
-    
     if (!authenticated) {
       // Redirect to login page
       const loginUrl = new URL('/login', request.url);
@@ -34,7 +33,7 @@ export function middleware(request: NextRequest) {
   }
 
   // If authenticated and trying to access login page, redirect to home
-  if (pathname === '/login' && isRequestAuthenticated(request)) {
+  if (pathname === '/login' && authenticated) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -43,7 +42,12 @@ export function middleware(request: NextRequest) {
     request.nextUrl.pathname === '/api/v1/plans' &&
     request.method === 'POST'
   ) {
-    const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'anonymous';
+    // Next 16 removed request.ip, so the forwarded header is what is left of
+    // it. That header is a list, and the first entry is the client.
+    const ip =
+      (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() ||
+      request.headers.get('x-real-ip') ||
+      'anonymous';
     const now = Date.now();
     
     const bucket = rateLimitBuckets.get(ip) || { count: 0, timestamp: now };
