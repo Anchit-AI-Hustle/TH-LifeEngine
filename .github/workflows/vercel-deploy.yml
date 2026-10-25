@@ -7,6 +7,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -23,18 +27,25 @@ jobs:
       - name: Build
         run: npm run build
 
+      # vercel/actions/deploy does not exist, so the job failed before any step
+      # ran. Deploy with the official Vercel CLI instead, when the secrets exist.
+      - name: Check Vercel secrets
+        id: secrets
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Vercel (if secrets available)
-        uses: vercel/actions/deploy@v5
-        with:
-          token: ${{ secrets.VERCEL_TOKEN }}
-          project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          org-id: ${{ secrets.VERCEL_ORG_ID }}
-      
+        if: steps.secrets.outputs.available == 'true'
+        run: |
+          npx --yes vercel@65.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@65.2.0 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@65.2.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
       - name: Hint when secrets missing
-        uses: vercel/actions/deploy@v5        
-        with:
-          token: ${{ secrets.VERCEL_TOKEN }}
-          project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          org-id: ${{ secrets.VERCEL_ORG_ID }}
-          working-directory: ./
-          production: true
+        if: steps.secrets.outputs.available != 'true'
+        run: |
+          echo "::warning::Skipped the CLI deploy: set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID as repository secrets to deploy from this workflow. The Vercel Git integration still deploys pushes to main."
