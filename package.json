@@ -21,7 +21,7 @@
     "dev:watch": "npm run dev & npm run watch:commit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.106.2",
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
