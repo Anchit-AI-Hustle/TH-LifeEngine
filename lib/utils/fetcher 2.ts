@@ -1,1 +1,0 @@
-export async function fetcher<T=any>(url:string, init?:RequestInit){ const res=await fetch(url,init); if(!res.ok) throw new Error(await res.text().catch(()=>`HTTP ${res.status}`)); return res.json() as Promise<T>; }

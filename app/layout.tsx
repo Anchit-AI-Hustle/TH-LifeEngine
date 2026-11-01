@@ -8,9 +8,12 @@ const PORTFOLIO_ASSETS = "https://anchit-tandon.com/assets";
 
 export const metadata: Metadata = {
   title: "TH+ LifeEngine",
-  description: "Personalized health booster",
+  description: "Personal wellness plans for yoga, movement, diet and sleep, tracked day by day.",
   icons: {
-    icon: "/favicon.png",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.png", type: "image/png", sizes: "32x32" },
+    ],
     apple: "/apple-touch-icon.png",
   },
 };
@@ -20,17 +23,15 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: "#111111",
+  themeColor: "#F7F7F8",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <link rel="icon" type="image/png" href="/favicon.png" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         {/* Shared portfolio navigation + project-level SkillTree / prompt library. */}
         <link rel="stylesheet" href={`${PORTFOLIO_ASSETS}/app-skill-map.css`} />
         <link rel="stylesheet" href={`${PORTFOLIO_ASSETS}/project-playbooks.css`} />

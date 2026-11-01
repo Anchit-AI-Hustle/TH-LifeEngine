@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import html2canvas from "html2canvas";
@@ -245,14 +246,13 @@ export default function UseCustomGPTPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-10">
-      <div className="max-w-5xl mx-auto px-6 space-y-10">
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold text-gray-900">🤖 Use Custom GPT</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Generate personalized wellness plans using TH_LifeEngine Companion GPT
-          </p>
-        </div>
+    <div>
+      <div className="max-w-5xl mx-auto space-y-8">
+        <PageHeader
+          eyebrow="New plan"
+          title="Create with Custom GPT"
+          description="Fill in a profile here, then generate the plan with the TH+ LifeEngine Companion GPT in ChatGPT."
+        />
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm text-red-800">

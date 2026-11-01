@@ -1,102 +1,73 @@
 "use client";
-import { useEffect, useState } from "react";
-import NavLink from "./NavLink";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import clsx from "clsx";
 import LogoutButton from "@/components/LogoutButton";
+import { NAV_GROUPS, SETTINGS_ITEM, activeHref, type NavItem } from "./nav";
 
-const NAV:[string,string][]= [
-  ["/lifeengine","Home"],
-  ["/lifeengine/profiles","Profiles"],
-  ["/lifeengine/create","Create Plan - Gemini"],
-  ["/use-custom-gpt","Create Plan - Custom GPT"],
-  ["/lifeengine/dashboard","Dashboard"],
-  ["/lifeengine/fitness","Fitness & Health"],
-  ["/lifeengine/fitness/planner","Activity Plan"],
-  ["/lifeengine/fitness/tracker","Activity Tracker"],
-  ["/lifeengine/fitness/activities","Activity Library"],
-  ["/lifeengine/settings","Settings"]
-];
+export function BrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <Link href="/lifeengine" className="flex items-center gap-3 rounded-lg focus-visible:outline-offset-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-500 text-sm font-bold text-white shadow-sm">
+        TH+
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="text-[15px] font-semibold text-gray-900">LifeEngine</span>
+        {!compact && <span className="text-xs text-gray-500">Personal wellness planner</span>}
+      </span>
+    </Link>
+  );
+}
 
-export default function Sidebar() {
-  const [rootUser, setRootUser] = useState<any>(null);
+function Item({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={clsx(
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        active ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+      )}
+    >
+      <Icon
+        className={clsx("h-[18px] w-[18px] shrink-0", active ? "text-indigo-600" : "text-gray-400 group-hover:text-gray-600")}
+        aria-hidden
+      />
+      <span className="truncate">{item.label}</span>
+    </Link>
+  );
+}
 
-  useEffect(() => {
-    // Initialize root user on mount - RUNS ONLY ONCE
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('th_lifeengine_root_user');
-      if (stored) {
-        try {
-          const user = JSON.parse(stored);
-          // Only update lastLogin, don't write back to localStorage to avoid loops
-          user.lastLogin = new Date().toISOString();
-          setRootUser(user);
-        } catch (err) {
-          console.error('Failed to parse user data:', err);
-          // Create fresh user if data is corrupted
-          const newUser = {
-            id: `root_${Date.now()}`,
-            username: 'root',
-            email: 'root@thlifeengine.com',
-            role: 'root',
-            createdAt: new Date().toISOString(),
-            lastLogin: new Date().toISOString()
-          };
-          localStorage.setItem('th_lifeengine_root_user', JSON.stringify(newUser));
-          setRootUser(newUser);
-        }
-      } else {
-        // Create root user only if doesn't exist
-        const newUser = {
-          id: `root_${Date.now()}`,
-          username: 'root',
-          email: 'root@thlifeengine.com',
-          role: 'root',
-          createdAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString()
-        };
-        localStorage.setItem('th_lifeengine_root_user', JSON.stringify(newUser));
-        setRootUser(newUser);
-      }
-    }
-  }, []); // Empty dependency array - runs only once on mount
+/** The navigation itself; rendered in the desktop rail and in the phone drawer. */
+export default function Sidebar({ onNavigate, showBrand = true }: { onNavigate?: () => void; showBrand?: boolean }) {
+  const current = activeHref(usePathname());
 
   return (
-    <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <div style={{ padding: "0 12px", fontSize: 12, color: "#6b7280", textTransform: "uppercase" }}>
-        Navigation
-      </div>
-      <nav aria-label="Main" style={{ flex: 1 }}>
-        {NAV.map(([h, l]) => <NavLink key={h} href={h} label={l} />)}
-      </nav>
-      
-      {/* Root User Display */}
-      <div style={{
-        padding: '12px',
-        borderTop: '1px solid #E5E7EB',
-        backgroundColor: '#F9FAFB',
-        fontSize: '12px',
-        color: '#6B7280',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px'
-      }}>
-        <div style={{ fontWeight: '600', color: '#111827', marginBottom: '4px', fontSize: '13px' }}>
-          👤 {rootUser?.username || 'Loading...'}
+    <div className="flex h-full flex-col">
+      {showBrand && (
+        <div className="px-5 pb-4 pt-5">
+          <BrandMark />
         </div>
-        <div style={{ fontSize: '10px', color: '#9CA3AF' }}>
-          {rootUser?.email}
-        </div>
-        <div style={{ fontSize: '10px', color: '#16A34A', marginTop: '4px', fontWeight: '600' }}>
-          {rootUser?.role?.toUpperCase()}
-        </div>
-        {rootUser?.lastLogin && (
-          <div style={{ fontSize: '9px', color: '#9CA3AF', marginTop: '4px' }}>
-            Last login: {new Date(rootUser.lastLogin).toLocaleTimeString()}
+      )}
+      <nav aria-label="Main" className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title}>
+            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{group.title}</p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <Item key={item.href} item={item} active={current === item.href} onNavigate={onNavigate} />
+              ))}
+            </div>
           </div>
-        )}
-        <div style={{ marginTop: '8px' }}>
-          <LogoutButton />
-        </div>
+        ))}
+      </nav>
+      <div className="space-y-0.5 border-t border-gray-200 px-3 py-3">
+        <Item item={SETTINGS_ITEM} active={current === SETTINGS_ITEM.href} onNavigate={onNavigate} />
+        <LogoutButton />
       </div>
-    </aside>
+    </div>
   );
 }

@@ -8,6 +8,9 @@ import { generatePlan, formatErrorMessage } from "@/lib/lifeengine/api";
 import { PLAN_TYPE_OPTIONS, DURATION_OPTIONS, getDietLabel } from "@/lib/lifeengine/planConfig";
 import { GenerationProgress } from "@/components/lifeengine/GenerationProgress";
 import { useAppVersion } from "@/components/providers/AppVersionProvider";
+import Link from "next/link";
+import { Cpu, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 const GENDER_MAP: Record<string, "M" | "F" | "Other"> = {
   male: "M",
@@ -265,38 +268,23 @@ export default function CreatePlan() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-10 px-4">
-      <div className="max-w-[1800px] mx-auto">
-        {/* Enhanced Header with Gradient Text */}
-        <header className="text-center mb-10">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl transform hover:scale-110 transition-transform duration-300">
-              <span className="text-4xl">🚀</span>
-            </div>
-            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">
-              Create Your Wellness Plan
-            </h1>
-          </div>
-          <p className="text-lg text-gray-700 max-w-3xl mx-auto font-medium">
-            Fill the form below and our AI will craft a comprehensive, personalized wellness plan tailored just for you
-          </p>
-          
-          {/* Feature Pills */}
-          <div className="flex items-center justify-center gap-3 mt-6 flex-wrap">
-            <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-sm font-semibold text-gray-700 shadow-md border border-gray-200">
-              ✨ AI-Powered
-            </span>
-            <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-sm font-semibold text-gray-700 shadow-md border border-gray-200">
-              🎯 Personalized
-            </span>
-            <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-sm font-semibold text-gray-700 shadow-md border border-gray-200">
-              📊 Comprehensive
-            </span>
-            <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-sm font-semibold text-gray-700 shadow-md border border-gray-200">
-              ⚡ Instant
-            </span>
-          </div>
-        </header>
+    <main>
+      <div className="mx-auto max-w-[1800px]">
+        <PageHeader
+          eyebrow="New plan"
+          title="Create a wellness plan"
+          description="Pick a profile, choose the plan types and duration, and get a day-by-day plan in under a minute."
+          actions={
+            <Link
+              href="/lifeengine/settings"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              title="Change the plan engine in Settings"
+            >
+              {appVersion === "oss" ? <Cpu className="h-3.5 w-3.5 text-gray-500" aria-hidden /> : <Sparkles className="h-3.5 w-3.5 text-indigo-600" aria-hidden />}
+              Engine: {appVersion === "oss" ? "Built-in rules" : "Gemini AI"}
+            </Link>
+          }
+        />
 
         {/* Loading State with Real Progress - Full Width with Animation */}
         {loading && (
