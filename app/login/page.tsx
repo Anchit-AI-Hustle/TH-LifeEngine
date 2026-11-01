@@ -9,6 +9,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set synchronously, so an autofill that fills the 4th digit and submits in
+  // the same tick still sends one request (and spends one of the 5 tries).
+  const inFlight = useRef(false);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -16,11 +19,12 @@ export default function LoginPage() {
   };
 
   const signIn = async (pin: string) => {
-    if (isLoading) return;
+    if (inFlight.current) return;
     if (!/^\d{4}$/.test(pin)) {
       setError('Type your 4-digit PIN, numbers only.');
       return;
     }
+    inFlight.current = true;
     setError('');
     setIsLoading(true);
 
@@ -41,6 +45,7 @@ export default function LoginPage() {
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
     }
+    inFlight.current = false;
     setPin('');
     setIsLoading(false);
     // The input is disabled until this render commits, so focus on the next frame.

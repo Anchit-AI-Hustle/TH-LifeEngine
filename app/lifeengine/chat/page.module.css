@@ -80,6 +80,7 @@
 }
 
 .welcome ul {
+  list-style: disc;
   text-align: left;
   margin: var(--space-4) 0;
   padding-left: var(--space-6);

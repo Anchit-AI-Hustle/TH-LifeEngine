@@ -8,22 +8,25 @@ const RATE_LIMIT_WINDOW_MS = 15_000; // 15 seconds
 const RATE_LIMIT_MAX_REQUESTS = 15;
 
 // Public paths that don't require authentication
+// Matched exactly, so '/privacy' does not also open '/privacy-anything'.
 const PUBLIC_PATHS = [
   '/login',
   '/privacy',
   '/api/auth/login',
-  '/_next',
   '/favicon.ico',
   '/favicon.svg',
   '/favicon.png',
   '/apple-touch-icon.png',
 ];
+const PUBLIC_PREFIXES = ['/_next/'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if path is public
-  const isPublicPath = PUBLIC_PATHS.some(path => pathname.startsWith(path));
+  const isPublicPath =
+    PUBLIC_PATHS.some(path => pathname === path) ||
+    PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
   const authenticated = await isRequestAuthenticated(request);
 
   // If not a public path, check authentication

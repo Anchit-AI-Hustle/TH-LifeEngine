@@ -14,11 +14,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDivElement>(null);
+  // Set by close(); the cleanup below moves focus back once the top bar is no longer inert.
+  const returnFocus = useRef(false);
   const pathname = usePathname();
 
   const close = useCallback(() => {
+    returnFocus.current = true;
     setOpen(false);
-    menuButton.current?.focus();
   }, []);
 
   // Close the drawer whenever the route changes.
@@ -36,6 +38,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.add("nav-open");
     const panel = drawer.current;
     panel?.querySelector<HTMLElement>("button, a")?.focus();
+    // Everything behind the drawer is out of reach for Tab and screen readers.
+    const behind = [document.getElementById("main"), document.getElementById("topbar")];
+    behind.forEach((el) => el?.setAttribute("inert", ""));
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -48,7 +53,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
+      if (!panel.contains(document.activeElement)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();
       } else if (!e.shiftKey && document.activeElement === last) {
@@ -60,6 +68,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       document.body.style.overflow = previousOverflow;
       document.documentElement.classList.remove("nav-open");
+      behind.forEach((el) => el?.removeAttribute("inert"));
+      if (returnFocus.current) {
+        returnFocus.current = false;
+        menuButton.current?.focus();
+      }
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close]);
@@ -87,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Phone and tablet top bar */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 lg:hidden">
+      <header id="topbar" className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 lg:hidden">
         <button
           ref={menuButton}
           type="button"

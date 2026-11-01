@@ -161,6 +161,7 @@
 
 .meal ul {
   margin: 0;
+  list-style: disc;
   padding-left: var(--space-4);
 }
 

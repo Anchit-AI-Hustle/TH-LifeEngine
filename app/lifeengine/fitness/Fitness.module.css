@@ -372,7 +372,7 @@
   font-weight: 700;
 }
 .blockMeta { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-.blockList { margin: 2px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.blockList { margin: 2px 0 0; list-style: disc; padding-left: 18px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .blockList li { margin-bottom: 2px; }
 
 .mod {
@@ -404,7 +404,7 @@
 .alertInfo { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
 .alertGood { border-color: #86efac; background: #f0fdf4; color: #166534; }
 
-.alert ul { margin: 4px 0 0; padding-left: 20px; }
+.alert ul { margin: 4px 0 0; list-style: disc; padding-left: 20px; }
 .alert li { margin-bottom: 3px; }
 
 /* ---------- progress bars ---------- */
