@@ -21,19 +21,21 @@ export function AppVersionProvider({ children }: { children: React.ReactNode }) 
   const [version, setVersion] = useState<AppVersion>(DEFAULT_VERSION);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(STORAGE_KEY) as AppVersion | null;
-    if (stored === "current" || stored === "oss") {
-      setVersion(stored);
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored === "current" || stored === "oss") setVersion(stored);
+    } catch {
+      // Storage blocked (private mode): stay on the default.
     }
   }, []);
 
+  // Every reader takes the value from this context, so no reload is needed.
   const handleVersionChange = (nextVersion: AppVersion) => {
-    if (version === nextVersion) return;
     setVersion(nextVersion);
-    if (typeof window !== "undefined") {
+    try {
       window.localStorage.setItem(STORAGE_KEY, nextVersion);
-      window.location.reload();
+    } catch {
+      // Not persisted, but still applies for this visit.
     }
   };
 

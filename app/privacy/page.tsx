@@ -1,6 +1,6 @@
 export default function PrivacyPage() {
   return (
-    <div className="prose mx-auto p-6">
+    <div className="prose mx-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-10">
       <h1>TH_LifeEngine Privacy Policy</h1>
       <p><strong>Effective Date:</strong> 01 Nov 2025</p>
 

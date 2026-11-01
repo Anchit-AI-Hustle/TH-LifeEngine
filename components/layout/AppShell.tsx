@@ -1,56 +1,137 @@
 "use client";
-import { useRef, useState } from "react";
-import Sidebar from "./Sidebar";
-import SidebarDrawer from "./SidebarDrawer";
-import { AppVersionSwitcher } from "@/components/ui/AppVersionSwitcher";
 
-export default function AppShell({children}:{children:React.ReactNode}){
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
+import Sidebar, { BrandMark } from "./Sidebar";
+
+/**
+ * The one app frame for every signed-in page.
+ * - lg and up: a fixed 264px rail on the left (matches --sidebar-w in globals.css).
+ * - below lg: a sticky top bar with a menu button that opens the same nav as a drawer.
+ */
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const close = () => {
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
+  const close = useCallback(() => {
     setOpen(false);
-    btnRef.current?.focus();
-  };
+    menuButton.current?.focus();
+  }, []);
+
+  // Close the drawer whenever the route changes.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // While open: lock page scroll, close on Escape, keep Tab inside the drawer.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    // The portfolio launchers float above everything; hide them so they
+    // cannot cover the drawer (they sat on top of "Sign out" on phones).
+    document.documentElement.classList.add("nav-open");
+    const panel = drawer.current;
+    panel?.querySelector<HTMLElement>("button, a")?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (e.key !== "Tab" || !panel) return;
+      const focusable = panel.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.documentElement.classList.remove("nav-open");
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, close]);
+
+  // A desktop-width resize while open would leave the page scroll-locked.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => mq.matches && setOpen(false);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Mobile Header with Menu Button */}
-      <header className="header">
-        <div className="container" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:56,gap:16}}>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button 
-              ref={btnRef} 
-              className="btn show-md" 
-              aria-controls="mobile-sidebar" 
-              aria-expanded={open} 
-              onClick={()=>setOpen(true)}
-            >
-              ☰
-            </button>
-            <div style={{display:"flex",flexDirection:"column"}}>
-              <strong>TH+ LifeEngine</strong>
-              <span style={{fontSize:12,color:"#6b7280"}}>Health Booster</span>
+    <div className="min-h-screen bg-[var(--bg)]">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg"
+      >
+        Skip to content
+      </a>
+
+      {/* Desktop rail */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] border-r border-gray-200 bg-white lg:block">
+        <Sidebar />
+      </aside>
+
+      {/* Phone and tablet top bar */}
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 lg:hidden">
+        <button
+          ref={menuButton}
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={open}
+          aria-controls="mobile-nav"
+          className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100"
+        >
+          <Menu className="h-5 w-5" aria-hidden />
+        </button>
+        <BrandMark compact />
+      </header>
+
+      {/* Phone and tablet drawer */}
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation" id="mobile-nav">
+          <div className="absolute inset-0 bg-gray-900/40 animate-[fade-in_150ms_ease-out]" onClick={close} aria-hidden />
+          <div
+            ref={drawer}
+            className="absolute inset-y-0 left-0 flex w-[min(300px,85vw)] flex-col bg-white shadow-xl animate-[drawer-in_200ms_ease-out]"
+          >
+            <div className="flex items-center justify-between px-5 pb-2 pt-4">
+              <BrandMark />
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close navigation"
+                className="-mr-2 flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <Sidebar showBrand={false} onNavigate={() => setOpen(false)} />
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:16}}>
-            <AppVersionSwitcher />
-          </div>
         </div>
-      </header>
-      
-      {/* Main Layout with Persistent Sidebar */}
-      <div className="layout" style={{ flex: 1 }}>
-        {/* Desktop Sidebar - Always Visible */}
-        <Sidebar/>
-        
-        {/* Main Content Area */}
-        <main className="container" style={{flex: 1, paddingTop:16,paddingBottom:32, overflowY: 'auto'}}>
-          {children}
-        </main>
-      </div>
-      
-      {/* Mobile Sidebar Drawer */}
-      <SidebarDrawer open={open} onClose={close}/>
+      )}
+
+      {/* Bottom padding keeps content clear of the floating portfolio launchers. */}
+      <main id="main" className="lg:pl-[264px]">
+        <div className="mx-auto w-full max-w-7xl px-4 pb-32 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">{children}</div>
+      </main>
     </div>
   );
 }

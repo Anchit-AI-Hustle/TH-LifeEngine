@@ -10,9 +10,13 @@ const RATE_LIMIT_MAX_REQUESTS = 15;
 // Public paths that don't require authentication
 const PUBLIC_PATHS = [
   '/login',
+  '/privacy',
   '/api/auth/login',
   '/_next',
   '/favicon.ico',
+  '/favicon.svg',
+  '/favicon.png',
+  '/apple-touch-icon.png',
 ];
 
 export async function middleware(request: NextRequest) {
