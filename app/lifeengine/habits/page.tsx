@@ -8,6 +8,7 @@ import {
   Award,
   CheckCircle2,
   ChevronDown,
+  CloudCheck,
   Flame,
   ListChecks,
   Plus,
@@ -38,6 +39,8 @@ import {
   heatmapSummary,
   heatmapWeeks,
   milestone,
+  overallWeekCompletion,
+  plural,
   startChallenge,
   toggleHabitDay,
   weekCompletion,
@@ -89,7 +92,12 @@ export default function HabitsPage() {
     setNotice({ id: Date.now(), tone, text });
     setAnnounce(text);
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+    noticeTimer.current = setTimeout(() => setNotice(null), 4000);
+  }, []);
+
+  const dismissNotice = useCallback(() => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice(null);
   }, []);
 
   const commit = useCallback((next: HabitsState) => {
@@ -112,6 +120,8 @@ export default function HabitsPage() {
     onToggle: (habit, day) => {
       const next = toggleHabitDay(habit, day);
       replaceHabit(next);
+      // "Added ..." and other notices are done with once a habit is ticked.
+      dismissNotice();
       const nowDone = next.done.includes(day);
       if (!nowDone) {
         setAnnounce(`${habit.name} unticked for ${day === today ? "today" : formatDay(day)}.`);
@@ -125,7 +135,7 @@ export default function HabitsPage() {
         showNotice(`${m}-${streak.unit} streak on ${habit.name}. Keep it going.`);
       } else {
         setAnnounce(
-          `${habit.name} done${day === today ? "" : ` for ${formatDay(day)}`}. ${streak.current} ${streak.unit}${streak.current === 1 ? "" : "s"} streak.${allDone ? " All habits done for today." : ""}`,
+          `${habit.name} done${day === today ? "" : ` for ${formatDay(day)}`}. ${plural(streak.current, streak.unit)} streak.${allDone ? " All habits done for today." : ""}`,
         );
       }
     },
@@ -227,7 +237,7 @@ export default function HabitsPage() {
     <div>
       <PageHeader
         title="Habits"
-        description="Small daily actions, tracked simply. Tick off today, keep your streaks and take on 21-day challenges."
+        description="Small daily actions, tracked simply. Tick off today, keep your streaks and take on 21-day challenges. Synced to your account."
         actions={
           !loading && active.length > 0 ? (
             <Button onClick={openCreate}>
@@ -285,9 +295,8 @@ export default function HabitsPage() {
           </section>
         </div>
       ) : (
-        <div className="space-y-8">
-          <SummaryStats habits={active} today={today} />
-
+        <div className="flex flex-col gap-8">
+          {/* Phones and tablets: today's list first, stats after. Desktop: stats on top. */}
           <div className="grid gap-6 lg:grid-cols-3">
             <section aria-labelledby="today-title" className="min-w-0 lg:col-span-2">
               <TodayHeader habits={active} today={today} />
@@ -296,6 +305,10 @@ export default function HabitsPage() {
                   <HabitCard key={h.id} habit={h} today={today} actions={actions} />
                 ))}
               </ul>
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-gray-500">
+                <CloudCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Ticks are saved as you go and synced to your account.
+              </p>
             </section>
 
             <div className="min-w-0 space-y-6">
@@ -312,6 +325,10 @@ export default function HabitsPage() {
               />
               <OverallHeatmap habits={state.habits} today={today} />
             </div>
+          </div>
+
+          <div className="lg:order-first">
+            <SummaryStats habits={active} today={today} />
           </div>
 
           {unusedTemplates.length > 0 ? (
@@ -353,7 +370,7 @@ export default function HabitsPage() {
                       </span>
                       <div className="min-w-0">
                         <p className="break-words text-sm font-semibold text-gray-900">{h.name}</p>
-                        <p className="text-xs text-gray-500">{h.done.length} check-ins kept</p>
+                        <p className="text-xs text-gray-500">{plural(h.done.length, "check-in")} kept</p>
                       </div>
                     </div>
                     {confirmDeleteId === h.id ? (
@@ -467,7 +484,7 @@ function Stat({ label, value, hint, icon: Icon, children }: { label: string; val
 
 function SummaryStats({ habits, today }: { habits: Habit[]; today: string }) {
   const { done, total } = dayTotals(habits, today);
-  const week = habits.length ? habits.reduce((s, h) => s + weekCompletion(h, today), 0) / habits.length : 0;
+  const week = overallWeekCompletion(habits, today) ?? 0;
   let bestName = "";
   let best = 0;
   let bestUnit: "day" | "week" = "day";
@@ -492,7 +509,7 @@ function SummaryStats({ habits, today }: { habits: Habit[]; today: string }) {
       <Stat label="Last 7 days" value={`${Math.round(week * 100)}%`} hint="Average completion" icon={Target} />
       <Stat
         label="Top streak"
-        value={best > 0 ? `${best} ${bestUnit === "day" ? (best === 1 ? "day" : "days") : best === 1 ? "week" : "weeks"}` : "0"}
+        value={best > 0 ? plural(best, bestUnit) : "0"}
         hint={best > 0 ? bestName : "Tick a habit to start one"}
         icon={Flame}
       />
@@ -520,7 +537,7 @@ function TodayHeader({ habits, today }: { habits: Habit[]; today: string }) {
       {allDone ? (
         <p className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-          All {total} habits done for today.
+          {total === 1 ? "Your habit is done for today." : `All ${plural(total, "habit")} done for today.`}
         </p>
       ) : (
         <p className="mt-1 text-sm text-gray-500">Tap the circle to tick a habit off. Tap a day below it to fix the past week.</p>
@@ -645,7 +662,7 @@ function OverallHeatmap({ habits, today }: { habits: Habit[]; today: string }) {
           cellClass={(c) => HEAT_SHADES[heatLevel(c.value)]}
           describe={(c) => {
             const t = dayTotals(habits, c.date);
-            return t.total ? `${t.done} of ${t.total} habits` : "no habits yet";
+            return t.total ? `${t.done} of ${plural(t.total, "habit")}` : "no habits yet";
           }}
         />
       </div>

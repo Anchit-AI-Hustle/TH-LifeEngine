@@ -1,27 +1,31 @@
 "use client";
 
-import { forwardRef, useEffect, useState, type FormEvent } from "react";
+import { forwardRef, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { AlertTriangle, BedDouble, Check, Sunrise } from "lucide-react";
+import { AlertTriangle, BedDouble, Check, CloudCheck, Sunrise } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { TAG_LABELS, checkEntry, formatDuration, parseClock } from "@/lib/sleep/logic";
 import type { SleepQuality, SleepTag } from "@/lib/sleep/types";
-import { QUALITY_LABELS, formatNight } from "./format";
+import { formatNight } from "./format";
+import { QUALITY_MISSING, QUALITY_REQUIRED, QualityPicker } from "./QualityPicker";
 
 export type SleepDraft = {
   night: string;
   bedtime: string;
   wake: string;
-  quality: SleepQuality;
+  /** null until the person picks one: a new night starts unrated. */
+  quality: SleepQuality | null;
   tags: SleepTag[];
   notes: string;
 };
 
+/** What onSave receives: always rated. */
+export type SavedSleepDraft = SleepDraft & { quality: SleepQuality };
+
 const TAGS = Object.keys(TAG_LABELS) as SleepTag[];
-const QUALITIES: SleepQuality[] = [1, 2, 3, 4, 5];
 
 /** Log or edit one night. */
 export const SleepForm = forwardRef<HTMLFormElement, {
@@ -30,11 +34,15 @@ export const SleepForm = forwardRef<HTMLFormElement, {
   today: string;
   /** Nights that already have an entry (other than the one being edited). */
   takenNights: Set<string>;
-  onSave: (draft: SleepDraft) => void;
+  onSave: (draft: SavedSleepDraft) => void;
   onCancel?: () => void;
-}>(function SleepForm({ mode, initial, today, takenNights, onSave, onCancel }, ref) {
+  /** A confirmation shown right next to the save button (e.g. "Saved Sun, 1 Nov"). */
+  status?: ReactNode;
+}>(function SleepForm({ mode, initial, today, takenNights, onSave, onCancel, status }, ref) {
   const [draft, setDraft] = useState<SleepDraft>(initial);
   const [submitted, setSubmitted] = useState(false);
+  const qualityRef = useRef<HTMLFieldSetElement>(null);
+  const bedtimeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft(initial);
@@ -46,11 +54,22 @@ export const SleepForm = forwardRef<HTMLFormElement, {
   const replaces = takenNights.has(draft.night);
   const set = <K extends keyof SleepDraft>(key: K, value: SleepDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
+  const qualityError = submitted && draft.quality === null ? QUALITY_REQUIRED : null;
+  const problems = [check.error, draft.quality === null ? QUALITY_MISSING : null].filter((p): p is string => Boolean(p));
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    if (check.error) return;
-    onSave({ ...draft, notes: draft.notes.trim() });
+    if (check.error) {
+      bedtimeRef.current?.focus();
+      return;
+    }
+    if (draft.quality === null) {
+      qualityRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      qualityRef.current?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+      return;
+    }
+    onSave({ ...draft, quality: draft.quality, notes: draft.notes.trim() });
   };
 
   return (
@@ -61,7 +80,7 @@ export const SleepForm = forwardRef<HTMLFormElement, {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Bedtime">
-          <Input type="time" value={draft.bedtime} required onChange={(e) => set("bedtime", e.target.value)} />
+          <Input ref={bedtimeRef} type="time" value={draft.bedtime} required onChange={(e) => set("bedtime", e.target.value)} />
         </Field>
         <Field label="Wake time">
           <Input type="time" value={draft.wake} required onChange={(e) => set("wake", e.target.value)} />
@@ -102,35 +121,13 @@ export const SleepForm = forwardRef<HTMLFormElement, {
         </p>
       ) : null}
 
-      <fieldset>
-        <legend className="text-[13px] font-semibold text-gray-700">How well did you sleep?</legend>
-        <div className="mt-2 grid grid-cols-5 gap-2">
-          {QUALITIES.map((q) => {
-            const selected = draft.quality === q;
-            return (
-              <label key={q} className="relative">
-                <input
-                  type="radio"
-                  name="sleep-quality"
-                  value={q}
-                  checked={selected}
-                  onChange={() => set("quality", q)}
-                  className="peer sr-only"
-                />
-                <span
-                  className={clsx(
-                    "flex min-h-[52px] cursor-pointer flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2",
-                    selected ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500" : "border-gray-200 text-gray-600 hover:bg-gray-50",
-                  )}
-                >
-                  <span className="text-base font-semibold tabular-nums leading-none">{q}</span>
-                  <span className="mt-1 text-[11px] leading-none">{QUALITY_LABELS[q]}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
+      <QualityPicker
+        ref={qualityRef}
+        name={mode === "create" ? "sleep-quality" : "sleep-quality-edit"}
+        value={draft.quality}
+        onChange={(q) => set("quality", q)}
+        error={qualityError}
+      />
 
       <fieldset>
         <legend className="text-[13px] font-semibold text-gray-700">Anything that might have affected it?</legend>
@@ -166,20 +163,34 @@ export const SleepForm = forwardRef<HTMLFormElement, {
           {formatNight(draft.night)} is already logged. Saving replaces that entry.
         </p>
       ) : null}
-      {submitted && check.error ? (
-        <p role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      {submitted && problems.length > 0 ? (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          {check.error}
-        </p>
+          <div className="min-w-0">
+            <p className="font-medium">{problems.length === 1 ? "One thing before saving:" : "Two things before saving:"}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       ) : null}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        {onCancel ? (
-          <Button type="button" variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-        ) : null}
-        <Button type="submit">{mode === "create" ? "Save night" : "Save changes"}</Button>
+      <div className="space-y-3">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <p className="flex items-center gap-1.5 text-xs text-gray-500 sm:mr-auto">
+            <CloudCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Synced to your account
+          </p>
+          {onCancel ? (
+            <Button type="button" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : null}
+          <Button type="submit">{mode === "create" ? "Save night" : "Save changes"}</Button>
+        </div>
+        {status}
       </div>
     </form>
   );
