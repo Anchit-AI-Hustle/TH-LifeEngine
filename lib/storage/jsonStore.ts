@@ -4,8 +4,9 @@
 // Blob documents are public at their URL (the free tier has no private
 // blobs), so every caller must use an unguessable key: account records are
 // keyed by an HMAC of the mobile number under AUTH_SECRET, and user data by a
-// random 128-bit account id. Nothing lists the store.
-import { BlobNotFoundError, del, head, put } from '@vercel/blob';
+// random 128-bit account id. Only deleteAll() lists the store, and only
+// under one account's own prefix.
+import { BlobNotFoundError, del, head, list, put } from '@vercel/blob';
 import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -122,4 +123,46 @@ export async function writeJson(key: string, value: unknown): Promise<void> {
     // Tidy up; a failure only leaves an unused old version behind.
     await del(`${previous.origin}/${versionPath(key, previous.version)}`).catch(() => {});
   }
+}
+
+// Only an account's own documents can be removed: its record, its by-id label
+// and its data folder. The ids are fixed-length (64 hex / 22 base64url
+// characters), so one account's prefix never matches another account.
+const DELETABLE = [
+  /^accounts\/[0-9a-f]{64}$/,
+  /^accounts\/by-id\/[A-Za-z0-9_-]{22}$/,
+  /^users\/[A-Za-z0-9_-]{22}\/$/,
+];
+
+/** Remove every document whose key starts with `prefix` (and its saved versions). Returns how many were removed. */
+export async function deleteAll(prefix: string): Promise<number> {
+  if (!DELETABLE.some((re) => re.test(prefix))) throw new Error(`refusing to delete ${prefix}`);
+  if (process.env.VERCEL && !useBlob()) throw new Error('BLOB_READ_WRITE_TOKEN is not set on this deployment');
+
+  if (!useBlob()) {
+    const trimmed = prefix.replace(/\/$/, '');
+    const dir = path.join(LOCAL_ROOT, path.dirname(trimmed));
+    const start = path.basename(trimmed);
+    let names: string[] = [];
+    try {
+      names = await fs.readdir(dir);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+      throw e;
+    }
+    const matches = prefix.endsWith('/') ? names.filter((n) => n === start) : names.filter((n) => n.startsWith(`${start}.`));
+    for (const n of matches) await fs.rm(path.join(dir, n), { recursive: true, force: true });
+    return matches.length;
+  }
+
+  let removed = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix, cursor, limit: 1000 });
+    const urls = page.blobs.map((b) => b.url);
+    if (urls.length) await del(urls);
+    removed += urls.length;
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+  return removed;
 }

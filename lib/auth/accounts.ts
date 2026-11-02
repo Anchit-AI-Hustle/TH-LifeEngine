@@ -5,7 +5,7 @@
 // find a record or test PINs against it (see lib/auth/pin.ts). The record
 // keeps the last 4 digits only, to show "signed in as ••••5238".
 import { createHmac, randomBytes } from 'node:crypto';
-import { readJson, writeJson } from '@/lib/storage/jsonStore';
+import { deleteAll, readJson, writeJson } from '@/lib/storage/jsonStore';
 import { hashPin, verifyPin, burnPinCheck, type PinHash } from './pin';
 
 export type Account = {
@@ -66,4 +66,16 @@ export async function accountLabel(id: string): Promise<string | null> {
   const rec = await readJson<{ country: string; last4: string }>(`accounts/by-id/${id}.json`);
   if (!rec) return null;
   return rec.country === '+91' ? `+91 ••••• •${rec.last4}` : `${rec.country}•••••${rec.last4}`;
+}
+
+/**
+ * Remove the account and everything saved under it: profiles, plans and
+ * synced data first, then the record itself, so a failure part-way leaves an
+ * account that can sign in and try again rather than orphaned data.
+ */
+export async function deleteAccount(e164: string, account: Account, secret: string): Promise<number> {
+  let removed = await deleteAll(`users/${account.id}/`);
+  removed += await deleteAll(`accounts/by-id/${account.id}`);
+  removed += await deleteAll(`accounts/${mobileKey(e164, secret)}`);
+  return removed;
 }
