@@ -43,8 +43,11 @@ export async function readJson<T>(key: string): Promise<T | null> {
     if (e instanceof BlobNotFoundError) return null;
     throw e;
   }
-  // The query string asks the CDN for this exact upload, not a cached older one.
-  const res = await fetch(`${meta.url}?v=${meta.uploadedAt.getTime()}`, { cache: 'no-store' });
+  // Read from origin storage, not the CDN: an overwrite can take up to 60s to
+  // reach the CDN cache, and a stale read here would be written back over the
+  // newer document (saved plans and profiles went missing that way).
+  // cache=0 is what the Blob SDK's useCache: false sends.
+  const res = await fetch(`${meta.url}?cache=0&v=${meta.uploadedAt.getTime()}`, { cache: 'no-store' });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`store read failed (${res.status})`);
   return (await res.json()) as T;
