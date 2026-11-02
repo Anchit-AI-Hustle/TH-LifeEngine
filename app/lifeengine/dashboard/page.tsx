@@ -538,7 +538,7 @@ export default function DashboardPage() {
             <Plus className="h-4 w-4" aria-hidden />
             Create plan
           </Link>
-          <Link href="/lifeengine/chat" className={secondaryLinkClass}>
+          <Link href="/use-custom-gpt" className={secondaryLinkClass}>
             <Bot className="h-4 w-4" aria-hidden />
             Plan with Custom GPT
           </Link>
@@ -600,7 +600,12 @@ export default function DashboardPage() {
         <section aria-label="Summary" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <StatCard label="Profiles" value={totalProfiles} hint="People you plan for" icon={Users} />
           <StatCard label="Plans created" value={totalPlans} hint="Across all profiles" icon={ClipboardList} />
-          <StatCard label="Plans ready" value={`${successRate}%`} hint="Finished generating" icon={CircleCheck} />
+          <StatCard
+            label="Plans ready"
+            value={totalPlans > 0 ? `${successRate}%` : "—"}
+            hint={totalPlans > 0 ? "Finished generating" : "No plans yet"}
+            icon={CircleCheck}
+          />
           <StatCard label="Focus areas" value={Object.keys(plansByType).length} hint="Different main goals" icon={Target} />
         </section>
 

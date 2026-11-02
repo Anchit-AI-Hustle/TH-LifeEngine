@@ -2,9 +2,16 @@
 
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck } from "lucide-react";
 
-export type DayNavItem = { label: string; sublabel?: string; short?: string; isToday?: boolean };
+export type DayNavItem = {
+  label: string;
+  sublabel?: string;
+  short?: string;
+  isToday?: boolean;
+  /** Every session of the day is ticked. */
+  done?: boolean;
+};
 
 export const tabId = (prefix: string, index: number) => `${prefix}-tab-${index}`;
 export const panelId = (prefix: string) => `${prefix}-panel`;
@@ -87,12 +94,15 @@ export function PlanDayNav({
               aria-selected={selected}
               aria-controls={panelId(idPrefix)}
               tabIndex={selected ? 0 : -1}
+              aria-label={item.done ? `${[item.label, item.sublabel].filter(Boolean).join(", ")}, done` : undefined}
               onClick={() => onSelect(index)}
               className={clsx(
                 "relative flex min-h-[48px] min-w-0 shrink-0 flex-col items-start justify-center rounded-xl border px-3.5 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100",
                 selected
                   ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500"
-                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                  : item.done
+                    ? "border-emerald-200 bg-emerald-50/50 text-gray-700 hover:bg-emerald-50"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
                 vertical && "lg:w-full lg:border-transparent lg:ring-0",
                 vertical && selected && "lg:border-transparent lg:bg-indigo-50",
                 vertical && !selected && "lg:bg-transparent",
@@ -100,6 +110,7 @@ export function PlanDayNav({
             >
               <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold">
                 {item.label}
+                {item.done && <CircleCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />}
                 {item.isToday && (
                   <span className={clsx("h-1.5 w-1.5 rounded-full", selected ? "bg-indigo-600" : "bg-indigo-500")} aria-hidden />
                 )}

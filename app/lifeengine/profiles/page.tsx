@@ -23,7 +23,6 @@ import {
 import type { Profile } from "@/lib/ai/schemas";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Field } from "@/components/ui/Field";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -34,7 +33,6 @@ import { EXPERIENCE_LABEL, GENDER_LABEL, ProfileAvatar, TIME_LABEL } from "./Pro
 const DEFAULT_PROFILE: Partial<Profile> = {
   name: "",
   age: 25,
-  gender: "other",
   goals: [],
   healthConcerns: "",
   experience: "beginner",
@@ -64,7 +62,8 @@ const SEARCH_THRESHOLD = 3;
 type FormState = {
   name: string;
   age: string;
-  gender: Profile["gender"];
+  /** Empty until the person picks one (required). */
+  gender: Profile["gender"] | "";
   goals: string[];
   healthConcerns: string;
   experience: Profile["experience"];
@@ -72,13 +71,13 @@ type FormState = {
   subscriptionType: Profile["subscriptionType"];
 };
 
-type FormErrors = Partial<Record<"name" | "age", string>>;
+type FormErrors = Partial<Record<"name" | "age" | "gender", string>>;
 
 function toFormState(profile: Partial<Profile>): FormState {
   return {
     name: profile.name ?? "",
     age: profile.age != null ? String(profile.age) : "",
-    gender: profile.gender ?? "other",
+    gender: profile.gender ?? "",
     goals: [...(profile.goals ?? [])],
     healthConcerns: profile.healthConcerns ?? "",
     experience: profile.experience ?? "beginner",
@@ -93,6 +92,7 @@ function validate(form: FormState): FormErrors {
   const age = Number(form.age);
   if (!form.age.trim()) errors.age = "Enter an age.";
   else if (!Number.isInteger(age) || age < 1 || age > 120) errors.age = "Enter an age between 1 and 120.";
+  if (!form.gender) errors.gender = "Choose a gender.";
   return errors;
 }
 
@@ -235,6 +235,10 @@ export default function ProfilesPage() {
       ageRef.current?.focus();
       return;
     }
+    if (found.gender) {
+      document.querySelector<HTMLInputElement>('input[name="gender"]')?.focus();
+      return;
+    }
 
     // A goal still sitting in the "add your own" box counts too.
     const pending = customGoal.trim();
@@ -244,11 +248,12 @@ export default function ProfilesPage() {
       id: editingId || `profile_${Date.now()}`,
       name: form.name.trim(),
       age: Number(form.age),
-      gender: form.gender,
+      gender: form.gender as Profile["gender"],
       goals: goals.map((g) => g.trim()).filter(Boolean),
       healthConcerns: form.healthConcerns,
       experience: form.experience,
       preferredTime: form.preferredTime,
+      // Not asked in the form any more; existing profiles keep theirs, new ones get the default.
       subscriptionType: form.subscriptionType,
     };
 
@@ -641,6 +646,7 @@ export default function ProfilesPage() {
                     name="gender"
                     value={form.gender}
                     onChange={(v) => update("gender", v as Profile["gender"])}
+                    error={errors.gender}
                     options={[
                       { value: "female", label: "Female" },
                       { value: "male", label: "Male" },
@@ -724,16 +730,6 @@ export default function ProfilesPage() {
                     { value: "flexible", label: "Flexible" },
                   ]}
                 />
-                <Field label="Subscription" required>
-                  <Select
-                    value={form.subscriptionType}
-                    onChange={(e) => update("subscriptionType", e.target.value as Profile["subscriptionType"])}
-                  >
-                    <option value="quarterly">Quarterly</option>
-                    <option value="annual">Annual</option>
-                    <option value="custom">Custom</option>
-                  </Select>
-                </Field>
               </FormSection>
 
               <div className="space-y-3 px-5 py-4 sm:px-6">
@@ -746,7 +742,7 @@ export default function ProfilesPage() {
                     {saveError}
                   </p>
                 )}
-                {submitted && (errors.name || errors.age) && (
+                {submitted && (errors.name || errors.age || errors.gender) && (
                   <p role="alert" className="text-sm text-red-600">
                     Fix the highlighted fields to save.
                   </p>
@@ -821,15 +817,18 @@ function SegmentedField({
   value,
   options,
   onChange,
+  error,
 }: {
   label: string;
   name: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
+  error?: string;
 }) {
+  const errorId = `${name}-error`;
   return (
-    <fieldset className="min-w-0">
+    <fieldset className="min-w-0" aria-describedby={error ? errorId : undefined} aria-invalid={error ? true : undefined}>
       <legend className="mb-1.5 text-[13px] font-semibold text-gray-700">
         {label}
         <span className="ml-1 text-red-600" aria-hidden>
@@ -837,7 +836,7 @@ function SegmentedField({
         </span>
       </legend>
       <div
-        className="grid rounded-xl bg-gray-100 p-1"
+        className={clsx("grid rounded-xl bg-gray-100 p-1", error && "ring-1 ring-red-300")}
         style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
       >
         {options.map((option) => (
@@ -856,6 +855,11 @@ function SegmentedField({
           </label>
         ))}
       </div>
+      {error && (
+        <p id={errorId} className="mt-1.5 text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
     </fieldset>
   );
 }

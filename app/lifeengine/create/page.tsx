@@ -318,14 +318,18 @@ export default function CreatePlan() {
   const ready = missing.length === 0;
   const readyText = ready ? "Ready to generate" : `Add ${missing.join(" and ")} to continue`;
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
-  const engineLabel = appVersion === "oss" ? "Built-in rules" : "Gemini AI";
+  const engineLabel = appVersion === "oss" ? "Quick plan (no AI)" : "AI plan";
+  const engineHint =
+    appVersion === "oss"
+      ? "Quick plan: built in seconds from the app's own library, without AI. Change this in Settings."
+      : "AI plan: written around the person's goals and health notes. Takes a minute or two. Change this in Settings.";
   const errorEntries = Object.entries(formErrors).filter(([field]) => !planFieldPasses(field, formData));
 
   const summaryRows: { label: string; value: string; step: string; missing?: boolean }[] = [
     {
       label: "For",
       value: formData.fullName.trim()
-        ? `${formData.fullName.trim()}, ${formData.age}, ${GENDER_LABEL[formData.gender] ?? formData.gender}`
+        ? [formData.fullName.trim(), formData.age, GENDER_LABEL[formData.gender] ?? (formData.gender || "gender not chosen")].join(", ")
         : "Not set",
       step: "step-profile",
       missing: !progress.profile,
@@ -377,11 +381,12 @@ export default function CreatePlan() {
         actions={
           <Link
             href="/lifeengine/settings"
-            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            title="Change the plan engine in Settings"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            title={engineHint}
+            aria-label={`${engineLabel}. ${engineHint}`}
           >
             {appVersion === "oss" ? <Cpu className="h-3.5 w-3.5 text-gray-500" aria-hidden /> : <Sparkles className="h-3.5 w-3.5 text-indigo-600" aria-hidden />}
-            Engine: {engineLabel}
+            {engineLabel}
           </Link>
         }
       />
@@ -543,8 +548,8 @@ export default function CreatePlan() {
                   </div>
                 ))}
                 <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 px-4 py-2.5 sm:grid-cols-[120px_minmax(0,1fr)]">
-                  <dt className="text-sm text-gray-500">Engine</dt>
-                  <dd className="text-sm text-gray-900">
+                  <dt className="text-sm text-gray-500">Made with</dt>
+                  <dd className="text-sm text-gray-900" title={engineHint}>
                     {engineLabel}{" "}
                     <Link href="/lifeengine/settings" className="font-medium text-indigo-700 hover:underline">
                       Change

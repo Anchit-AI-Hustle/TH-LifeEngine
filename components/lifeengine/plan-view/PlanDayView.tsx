@@ -35,6 +35,7 @@ import {
   type ViewNote,
   type ViewPose,
 } from "./model";
+import { DayProgressBar, DoneToggle, dayItemIds, isDone, useDayProgress } from "./progress";
 
 /**
  * "screen" is the interactive reading view. "paper" is the print and PDF
@@ -167,6 +168,7 @@ export function Section({
   chips = [],
   children,
   mode = "screen",
+  action,
 }: {
   id: string;
   icon: LucideIcon;
@@ -175,6 +177,8 @@ export function Section({
   chips?: ViewChip[];
   children: ReactNode;
   mode?: ViewMode;
+  /** Shown at the right of the header (for example the Done toggle). */
+  action?: ReactNode;
 }) {
   const paper = mode === "paper";
   return (
@@ -198,6 +202,7 @@ export function Section({
           {description && <p className={clsx("mt-0.5 text-sm", paper ? "text-gray-800" : "text-gray-500")}>{description}</p>}
           <ChipRow chips={chips} mode={mode} className="mt-2" />
         </div>
+        {action}
       </div>
       <div className="mt-5">{children}</div>
     </section>
@@ -383,7 +388,18 @@ function RecipeToggle({ meal, summary }: { meal: ViewMeal; summary: string }) {
   );
 }
 
-function MealCard({ meal, mode }: { meal: ViewMeal; mode: ViewMode }) {
+function MealCard({
+  meal,
+  mode,
+  done,
+  onDoneChange,
+}: {
+  meal: ViewMeal;
+  mode: ViewMode;
+  done?: boolean;
+  /** When set, the card shows a Done toggle. */
+  onDoneChange?: (done: boolean) => void;
+}) {
   const paper = mode === "paper";
   const hasRecipe = meal.ingredients.length > 0 || meal.steps.length > 0;
   const recipeSummary = [
@@ -393,7 +409,12 @@ function MealCard({ meal, mode }: { meal: ViewMeal; mode: ViewMode }) {
     .filter(Boolean)
     .join(" · ");
   return (
-    <li className={clsx("flex flex-col rounded-xl border p-4", paper ? "break-inside-avoid border-gray-300" : "border-gray-200")}>
+    <li
+      className={clsx(
+        "flex flex-col rounded-xl border p-4",
+        paper ? "break-inside-avoid border-gray-300" : done ? "border-emerald-200 bg-emerald-50/30" : "border-gray-200",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className={clsx("text-xs font-semibold uppercase tracking-wider", paper ? "text-gray-800" : "text-gray-500")}>{meal.label}</p>
@@ -429,6 +450,11 @@ function MealCard({ meal, mode }: { meal: ViewMeal; mode: ViewMode }) {
           </Detail>
         )}
       </div>
+      {onDoneChange && !paper && (
+        <div className="mt-auto flex justify-end pt-3">
+          <DoneToggle label={meal.label} done={Boolean(done)} onChange={onDoneChange} />
+        </div>
+      )}
     </li>
   );
 }
@@ -551,10 +577,24 @@ export function PlanDayView({
 }) {
   const paper = mode === "paper";
   const totals = dayNutrition(day.meals);
+  const context = useDayProgress();
+  // Ticks are for the reading view only, never for print or PDF.
+  const progress = paper ? null : context;
+  const itemIds = dayItemIds(day);
+  const toggle = (itemId: string, label: string) =>
+    progress ? (
+      <DoneToggle
+        label={label}
+        done={isDone(progress.done, itemId)}
+        onChange={(done) => progress.setItemDone(itemId, done, itemIds)}
+      />
+    ) : undefined;
 
   return (
     <div className={clsx(paper ? "space-y-5 bg-white text-black" : "space-y-4 sm:space-y-6")}>
       <DayTitle day={day} mode={mode} headingId={headingId} actions={titleActions} />
+
+      {progress && <DayProgressBar day={day} />}
 
       {day.note && (
         <p
@@ -581,6 +621,7 @@ export function PlanDayView({
           description={day.yoga.title}
           chips={day.yoga.chips}
           mode={mode}
+          action={toggle("yoga", "Yoga")}
         >
           {day.yoga.description && <p className="mb-4 text-sm text-gray-700">{day.yoga.description}</p>}
           {day.yoga.poses.length > 0 && (
@@ -609,6 +650,7 @@ export function PlanDayView({
           title="Training"
           description={`${day.exercises.length} ${day.exercises.length === 1 ? "exercise" : "exercises"}`}
           mode={mode}
+          action={toggle("training", "Training")}
         >
           <ol className="space-y-3">
             {day.exercises.map((exercise, i) => (
@@ -629,7 +671,13 @@ export function PlanDayView({
           <NutritionTotals nutrition={totals} mode={mode} />
           <ul className={clsx("grid gap-3", !paper && "xl:grid-cols-2 xl:items-start")}>
             {day.meals.map((meal, i) => (
-              <MealCard key={i} meal={meal} mode={mode} />
+              <MealCard
+                key={i}
+                meal={meal}
+                mode={mode}
+                done={progress ? isDone(progress.done, `meal-${i}`) : undefined}
+                onDoneChange={progress ? (done) => progress.setItemDone(`meal-${i}`, done, itemIds) : undefined}
+              />
             ))}
           </ul>
         </Section>
