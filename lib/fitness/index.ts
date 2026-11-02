@@ -36,3 +36,4 @@ export {
 } from "./tracker";
 export * from "./store";
 export { createBlankProfile, DEMO_PROFILES } from "./samples";
+export { fitnessProfileFromPerson, mapPersonGoals, type PersonProfile } from "./fromProfile";
