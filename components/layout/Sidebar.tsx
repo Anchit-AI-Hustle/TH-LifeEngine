@@ -74,7 +74,7 @@ export default function Sidebar({ onNavigate, showBrand = true }: { onNavigate?:
           <BrandMark />
         </div>
       )}
-      <nav aria-label="Main" className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
+      <nav aria-label="Main" className="flex-1 space-y-5 overflow-y-auto px-3 py-2">
         {NAV_GROUPS.map((group) => (
           <div key={group.title}>
             <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{group.title}</p>

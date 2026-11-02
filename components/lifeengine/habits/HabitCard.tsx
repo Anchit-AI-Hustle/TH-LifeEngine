@@ -111,8 +111,15 @@ export function HabitCard({ habit, today, actions }: { habit: Habit; today: stri
                   aria-hidden
                   className={clsx(
                     "h-4 w-4 rounded-full transition-colors duration-200",
-                    d.done ? color.swatch : d.beforeStart ? "bg-gray-50 ring-1 ring-inset ring-gray-100" : "bg-gray-100",
-                    d.isToday && "ring-2 ring-gray-300 ring-offset-1",
+                    d.done ? color.swatch : d.beforeStart ? "bg-white" : "bg-gray-200",
+                    // Today gets a stronger ring; empty days a visible outline; days before the habit existed a faint one.
+                    d.isToday
+                      ? "ring-2 ring-gray-500 ring-offset-1"
+                      : d.done
+                        ? null
+                        : d.beforeStart
+                          ? "ring-1 ring-inset ring-gray-200"
+                          : "ring-1 ring-gray-300",
                   )}
                 />
               </button>

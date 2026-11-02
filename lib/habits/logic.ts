@@ -189,6 +189,21 @@ export function doneThisWeek(habit: Pick<Habit, "done">, today: string): number 
   return habit.done.filter((d) => d >= start && d <= today).length;
 }
 
+/**
+ * Average last-7-days completion across habits that are not archived, 0..1.
+ * null when there are no habits to measure.
+ */
+export function overallWeekCompletion(habits: Habit[], today: string): number | null {
+  const live = habits.filter((h) => !h.archived);
+  if (live.length === 0) return null;
+  return live.reduce((sum, h) => sum + weekCompletion(h, today), 0) / live.length;
+}
+
+/** "1 habit", "3 habits". `many` defaults to the word plus "s". */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export function targetLabel(target: HabitTarget): string {
   if (target.kind === "daily") return "Every day";
   return `${target.perWeek} ${target.perWeek === 1 ? "day" : "days"} a week`;

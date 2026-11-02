@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import clsx from "clsx";
 import { Menu, X } from "lucide-react";
 import Sidebar, { BrandMark } from "./Sidebar";
+import { TAB_ITEMS, activeTab } from "./nav";
 import { hydrate } from "@/lib/sync/client";
 
 /**
  * The one app frame for every signed-in page.
  * - lg and up: a fixed 264px rail on the left (matches --sidebar-w in globals.css).
- * - below lg: a sticky top bar with a menu button that opens the same nav as a drawer.
+ * - below lg: a sticky top bar with a menu button that opens the same nav as a
+ *   drawer, and a bottom tab bar (Today, Habits, Plans, Fitness, More = drawer).
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -34,6 +38,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
   const menuButton = useRef<HTMLButtonElement>(null);
+  // The button that opened the drawer (top-bar menu or the "More" tab) gets focus back.
+  const opener = useRef<HTMLElement | null>(null);
   const drawer = useRef<HTMLDivElement>(null);
   // Set by close(); the cleanup below moves focus back once the top bar is no longer inert.
   const returnFocus = useRef(false);
@@ -43,6 +49,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     returnFocus.current = true;
     setOpen(false);
   }, []);
+
+  const openDrawer = (from: HTMLElement | null) => {
+    opener.current = from;
+    setOpen(true);
+  };
+  const tab = activeTab(pathname);
 
   // Close the drawer whenever the route changes.
   useEffect(() => {
@@ -60,7 +72,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const panel = drawer.current;
     panel?.querySelector<HTMLElement>("button, a")?.focus();
     // Everything behind the drawer is out of reach for Tab and screen readers.
-    const behind = [document.getElementById("main"), document.getElementById("topbar")];
+    const behind = [document.getElementById("main"), document.getElementById("topbar"), document.getElementById("tabbar")];
     behind.forEach((el) => el?.setAttribute("inert", ""));
 
     const onKey = (e: KeyboardEvent) => {
@@ -92,7 +104,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       behind.forEach((el) => el?.removeAttribute("inert"));
       if (returnFocus.current) {
         returnFocus.current = false;
-        menuButton.current?.focus();
+        (opener.current ?? menuButton.current)?.focus();
       }
       document.removeEventListener("keydown", onKey);
     };
@@ -125,7 +137,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <button
           ref={menuButton}
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={(e) => openDrawer(e.currentTarget)}
           aria-label="Open navigation"
           aria-expanded={open}
           aria-controls="mobile-nav"
@@ -164,7 +176,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* The portfolio launchers are docked in the top bar / sidebar (globals.css). */}
       <main id="main" className="lg:pl-[264px]">
-        <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">
+        {/* Below lg the bottom padding clears the fixed tab bar (64px + the home-indicator inset). */}
+        <div className="mx-auto w-full max-w-7xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pb-16 lg:pt-8">
           {synced ? (
             children
           ) : (
@@ -180,6 +193,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </main>
+
+      {/* Phone and tablet tab bar */}
+      <nav
+        id="tabbar"
+        aria-label="Quick"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      >
+        <ul className="mx-auto grid h-16 max-w-xl grid-cols-5">
+          {TAB_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = tab === item.key;
+            const inner = (
+              <>
+                <span
+                  className={clsx(
+                    "flex h-7 w-12 items-center justify-center rounded-full transition-colors",
+                    active ? "bg-indigo-50 text-indigo-600" : "text-gray-500",
+                  )}
+                >
+                  <Icon className="h-5 w-5" aria-hidden />
+                </span>
+                <span className={clsx("text-[11px] font-medium leading-none", active ? "text-indigo-700" : "text-gray-600")}>
+                  {item.label}
+                </span>
+              </>
+            );
+            const cls = "flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg";
+            return (
+              <li key={item.key} className="min-w-0">
+                {item.href ? (
+                  <Link href={item.href} aria-current={active ? "page" : undefined} className={cls}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => openDrawer(e.currentTarget)}
+                    aria-expanded={open}
+                    aria-controls="mobile-nav"
+                    aria-label="More: open navigation"
+                    className={cls}
+                  >
+                    {inner}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      {/* Sticky bottom action bars inside pages (e.g. Create plan) sit on top of the tab bar, not under it. */}
+      <style>{`@media (max-width: 1023px) { #main .sticky.bottom-0 { bottom: calc(4rem + env(safe-area-inset-bottom)); } }`}</style>
     </div>
   );
 }
