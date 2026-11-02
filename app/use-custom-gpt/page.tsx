@@ -2,12 +2,30 @@
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useEffect, useState, useRef } from "react";
-import Link from "next/link";
+import clsx from "clsx";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  Clock,
+  Copy,
+  Download,
+  ExternalLink,
+  FileJson,
+  Info,
+  RefreshCw,
+  RotateCcw,
+  WandSparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import PlanPreview from "@/app/components/PlanPreview";
 import { CustomGPTForm } from "@/components/lifeengine/CustomGPTForm";
+import { SectionCard } from "@/components/lifeengine/PlanConfigurator";
+import { GenerationProgress } from "@/components/lifeengine/GenerationProgress";
 import type { Profile } from "@/lib/ai/schemas";
 import type { LifeEnginePlan } from "@/app/types/lifeengine";
 import {
@@ -16,24 +34,48 @@ import {
 } from "@/lib/lifeengine/planConfig";
 import { requestPlanFromCustomGPT, fallbackToRuleEngine } from "@/lib/lifeengine/customGptService";
 import { savePlanRecord } from "@/lib/lifeengine/storage";
-import { formatErrorMessage } from "@/lib/lifeengine/api";
+import { formatErrorMessage, getLatestPlan, isErrorStatus } from "@/lib/lifeengine/api";
 import { buildPromptFromForm, type PromptBuilderInput } from "@/lib/lifeengine/promptBuilder";
 
 const GPT_URL =
   process.env.NEXT_PUBLIC_LIFEENGINE_GPT_URL ||
   "https://chatgpt.com/g/g-690630c1dfe48191b63fc09f8f024ccb-th-lifeengine-companion?ref=mini";
 
+const HOW_IT_WORKS = [
+  { title: "Fill in the profile and plan", body: "Choose who the plan is for and what it should cover." },
+  { title: "Open the GPT", body: "We copy a short brief for you. Paste it into the LifeEngine Companion in ChatGPT." },
+  { title: "Refresh to bring it here", body: "Once the GPT has saved the plan, refresh below to see it." },
+];
+
+type LatestStatus =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "none"; checkedAt: Date }
+  | { state: "found"; checkedAt: Date; createdAt?: string }
+  | { state: "error"; message: string };
+
+function formatWhen(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
 export default function UseCustomGPTPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [form, setForm] = useState(defaultPlanFormState);
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<LifeEnginePlan | null>(null);
   const [rawPlan, setRawPlan] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
+  const [latest, setLatest] = useState<LatestStatus>({ state: "idle" });
+  const [copied, setCopied] = useState(false);
   const planRef = useRef<HTMLDivElement>(null);
-  
+
   // Editable prompt feature
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -48,10 +90,17 @@ export default function UseCustomGPTPage() {
         setProfiles(data.profiles || []);
       } catch (err) {
         console.error("Failed to load profiles", err);
+      } finally {
+        setProfilesLoaded(true);
       }
     };
     loadProfiles();
   }, []);
+
+  // A different profile has a different latest plan.
+  useEffect(() => {
+    setLatest({ state: "idle" });
+  }, [selectedProfileId]);
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
   const planBrief = describePlanBrief(selectedProfileId || "unknown", form);
@@ -73,13 +122,48 @@ export default function UseCustomGPTPage() {
     }
   }, [selectedProfile, form, editMode]);
 
-  const openGPT = async () => {
+  const copyBrief = async () => {
     try {
       await navigator.clipboard.writeText(planBrief);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.warn("Failed to copy prompt", err);
+    }
+  };
+
+  const openGPT = async () => {
+    let copiedOk = false;
+    try {
+      await navigator.clipboard.writeText(planBrief);
+      copiedOk = true;
     } catch (err) {
       console.warn("Failed to copy prompt", err);
     }
     window.open(GPT_URL, "_blank", "noopener,noreferrer");
+    setNotice(
+      copiedOk
+        ? "Brief copied. Paste it into the GPT, then come back and refresh to load the plan."
+        : "The GPT opened in a new tab. Copy the brief below and paste it there.",
+    );
+  };
+
+  const refreshLatest = async () => {
+    if (!selectedProfileId) return;
+    setLatest({ state: "checking" });
+    try {
+      const latestPlan = (await getLatestPlan(selectedProfileId)) as LifeEnginePlan;
+      setPlan(latestPlan);
+      setRawPlan(JSON.stringify(latestPlan, null, 2));
+      setShowJson(false);
+      setLatest({ state: "found", checkedAt: new Date(), createdAt: latestPlan?.metadata?.timestamp });
+    } catch (err) {
+      if (isErrorStatus(err, 404)) {
+        setLatest({ state: "none", checkedAt: new Date() });
+      } else {
+        setLatest({ state: "error", message: formatErrorMessage(err) });
+      }
+    }
   };
 
   const handleGenerate = async (event: React.FormEvent) => {
@@ -90,11 +174,12 @@ export default function UseCustomGPTPage() {
     }
     setLoading(true);
     setError(null);
+    setNotice(null);
     setShowJson(false);
 
     try {
       let result: any;
-      
+
       // Use edited prompt if in edit mode, otherwise use the standard flow
       if (editMode && editedPrompt.trim()) {
         const response = await fetch("/api/lifeengine/custom-gpt-generate", {
@@ -136,7 +221,7 @@ export default function UseCustomGPTPage() {
       }
 
       const planId = result.metadata?.planId || `local-${crypto.randomUUID()}`;
-      
+
       // Ensure metadata includes profile_id for /api/v1/plans/latest
       if (!result.plan.metadata) {
         result.plan.metadata = {} as any;
@@ -146,9 +231,10 @@ export default function UseCustomGPTPage() {
       (result.plan.metadata as any).plan_type = form.planTypes;
       result.plan.metadata.language = "English";
       (result.plan.metadata as any).timestamp = result.metadata?.generatedAt || new Date().toISOString();
-      
+
       setPlan(result.plan);
       setRawPlan(JSON.stringify(result.plan, null, 2));
+      setLatest({ state: "found", checkedAt: new Date(), createdAt: (result.plan.metadata as any).timestamp });
 
       // Save to localStorage for immediate UI access
       savePlanRecord({
@@ -172,22 +258,23 @@ export default function UseCustomGPTPage() {
 
         if (postResponse.ok) {
           const postData = await postResponse.json();
-          console.log(`✅ [CustomGPT] Plan saved to backend with ID: ${postData.plan_id}`);
+          console.log(`[CustomGPT] Plan saved to backend with ID: ${postData.plan_id}`);
         } else {
-          console.warn(`⚠️ [CustomGPT] Failed to save plan to backend:`, await postResponse.text());
+          console.warn(`[CustomGPT] Failed to save plan to backend:`, await postResponse.text());
         }
       } catch (backendError) {
-        console.warn(`⚠️ [CustomGPT] Could not save to backend:`, backendError);
+        console.warn(`[CustomGPT] Could not save to backend:`, backendError);
       }
     } catch (err: any) {
       const message = formatErrorMessage(err);
       setError(message);
       try {
         const fallbackPlanId = await fallbackToRuleEngine(form, selectedProfileId);
-        alert(
-          `Custom GPT failed (${message}). A rule-based plan was generated instead. Redirecting you now.`
-        );
-        window.location.href = `/lifeengine/plan/${fallbackPlanId}`;
+        setError(null);
+        setNotice(`Custom GPT failed (${message}). A plan from the built-in rules was created instead. Opening it now.`);
+        setTimeout(() => {
+          window.location.href = `/lifeengine/plan/${fallbackPlanId}`;
+        }, 2000);
       } catch (fallbackError) {
         setError(
           `Custom GPT failed (${message}) and fallback generation also failed: ${formatErrorMessage(
@@ -241,26 +328,53 @@ export default function UseCustomGPTPage() {
       pdf.save(`TH_LifeEngine_CustomGPT_${selectedProfile?.name ?? "plan"}.pdf`);
     } catch (err) {
       console.error("PDF generation failed", err);
-      alert("Failed to generate PDF. Please try again.");
+      setError("Could not create the PDF. Please try again.");
     }
   };
 
   return (
-    <div>
-      <div className="max-w-5xl mx-auto space-y-8">
-        <PageHeader
-          eyebrow="New plan"
-          title="Create with Custom GPT"
-          description="Fill in a profile here, then generate the plan with the TH+ LifeEngine Companion GPT in ChatGPT."
-        />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        eyebrow="New plan"
+        title="Create with Custom GPT"
+        description="Fill in a profile here, then generate the plan with the TH+ LifeEngine Companion GPT in ChatGPT."
+      />
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm text-red-800">
-            {error}
-          </div>
-        )}
+      {/* How it works */}
+      <section aria-labelledby="how-title" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 id="how-title" className="text-base font-semibold text-gray-900">
+          How it works
+        </h2>
+        <ol className="mt-4 grid gap-4 sm:grid-cols-3">
+          {HOW_IT_WORKS.map((step, i) => (
+            <li key={step.title} className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-semibold tabular-nums text-indigo-700">
+                {i + 1}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                <p className="mt-0.5 text-sm text-gray-500">{step.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
 
-        <form onSubmit={handleGenerate} className="space-y-6">
+      {error && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p className="min-w-0 flex-1 break-words">{error}</p>
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p className="min-w-0 flex-1">{notice}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        {profilesLoaded ? (
           <CustomGPTForm
             profiles={profiles}
             selectedProfileId={selectedProfileId}
@@ -268,100 +382,210 @@ export default function UseCustomGPTPage() {
             form={form}
             setForm={setForm}
           />
-          <div className="flex flex-wrap gap-4">
-            <Button type="submit" disabled={loading || !selectedProfileId}>
-              {loading ? "Generating..." : editMode ? "Generate with Custom Prompt" : "Generate with Custom GPT"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={openGPT}>
-              Open GPT in Chat
+        ) : (
+          <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6" aria-hidden>
+            <div className="h-5 w-32 animate-pulse rounded-lg bg-gray-100" />
+            <div className="h-10 animate-pulse rounded-lg bg-gray-100" />
+          </div>
+        )}
+
+        <SectionCard
+          id="step-get-plan"
+          step={4}
+          title="Get your plan"
+          description="Open the GPT in ChatGPT and refresh here when it is done, or generate it right here."
+        >
+          {/* Latest plan status */}
+          <div
+            className={clsx(
+              "flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+              latest.state === "found" ? "border-emerald-200 bg-emerald-50/60" : "border-gray-200 bg-gray-50",
+            )}
+          >
+            <div role="status" aria-live="polite" className="flex min-w-0 items-start gap-3">
+              <span
+                className={clsx(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                  latest.state === "found" ? "bg-emerald-100 text-emerald-700" : "bg-white text-gray-500 ring-1 ring-gray-200",
+                )}
+                aria-hidden
+              >
+                {latest.state === "found" ? (
+                  <Check className="h-4 w-4" />
+                ) : latest.state === "error" ? (
+                  <CircleAlert className="h-4 w-4 text-red-600" />
+                ) : (
+                  <Clock className="h-4 w-4" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">
+                  {!selectedProfileId
+                    ? "Choose a profile to see its latest plan"
+                    : latest.state === "checking"
+                      ? "Checking for the latest plan"
+                      : latest.state === "found"
+                        ? "Latest plan loaded"
+                        : latest.state === "none"
+                          ? "No plan from the GPT yet"
+                          : latest.state === "error"
+                            ? "Could not check for a plan"
+                            : `Latest plan for ${selectedProfile?.name ?? "this profile"}`}
+                </p>
+                <p className="mt-0.5 break-words text-xs text-gray-500">
+                  {!selectedProfileId
+                    ? "Step 1 above."
+                    : latest.state === "found"
+                      ? latest.createdAt
+                        ? `Created ${formatWhen(latest.createdAt)}. It is shown below.`
+                        : "It is shown below."
+                      : latest.state === "none"
+                        ? `Checked at ${latest.checkedAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}. Finish in ChatGPT, then refresh again.`
+                        : latest.state === "error"
+                          ? latest.message
+                          : latest.state === "checking"
+                            ? "One moment."
+                            : "Not checked yet. Refresh after the GPT has saved the plan."}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={refreshLatest}
+              disabled={!selectedProfileId || latest.state === "checking"}
+              className="shrink-0"
+            >
+              <RefreshCw className={clsx(latest.state === "checking" && "animate-spin")} aria-hidden />
+              Refresh latest plan
             </Button>
           </div>
-        </form>
 
-        {/* Editable Prompt Section */}
-        {selectedProfileId && systemPrompt && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🔧</span>
-                <h3 className="text-lg font-semibold text-indigo-900">
-                  Advanced: System Prompt Editor
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPromptEditor(!showPromptEditor)}
-                className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
-              >
-                {showPromptEditor ? "▼ Hide" : "▶ Show"} Prompt
-              </button>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="flex flex-col rounded-xl border border-gray-200 p-4">
+              <p className="text-sm font-semibold text-gray-900">In ChatGPT</p>
+              <p className="mt-1 flex-1 text-sm text-gray-500">
+                Opens the LifeEngine Companion GPT in a new tab with the brief on your clipboard.
+              </p>
+              <Button type="button" variant="ghost" onClick={openGPT} className="mt-4 self-start">
+                <ExternalLink aria-hidden />
+                Open the GPT
+              </Button>
             </div>
+            <div className="flex flex-col rounded-xl border border-gray-200 p-4">
+              <p className="text-sm font-semibold text-gray-900">Here in the app</p>
+              <p className="mt-1 flex-1 text-sm text-gray-500">
+                {editMode
+                  ? "Sends your edited prompt to the same GPT and shows the plan below."
+                  : "Sends the same brief to the GPT for you and shows the plan below."}
+              </p>
+              <Button type="submit" disabled={loading || !selectedProfileId} className="mt-4 self-start">
+                <WandSparkles aria-hidden />
+                {loading ? "Generating..." : editMode ? "Generate with edited prompt" : "Generate here"}
+              </Button>
+              {!selectedProfileId && <p className="mt-2 text-xs text-gray-500">Choose a profile first.</p>}
+            </div>
+          </div>
+        </SectionCard>
+      </form>
 
-            {showPromptEditor && (
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-                  <p className="text-sm text-blue-800 mb-3">
-                    ✏️ <strong>Edit the system prompt</strong> below to customize the AI's instructions before generating your plan.
-                    This gives you full control over how the AI interprets your requirements.
-                  </p>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editMode}
-                      onChange={(e) => {
-                        setEditMode(e.target.checked);
-                        if (!e.target.checked) {
-                          setEditedPrompt(systemPrompt);
-                        }
-                      }}
-                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-semibold text-blue-900">
-                      Enable Prompt Editing Mode
-                    </span>
+      {loading && (
+        <GenerationProgress title="Generating with Custom GPT" estimatedSeconds={90} />
+      )}
+
+      {/* Brief */}
+      <section aria-labelledby="brief-title" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="brief-title" className="text-base font-semibold text-gray-900">
+              Brief for the GPT
+            </h2>
+            <p className="mt-0.5 text-sm text-gray-500">Copied for you when you open the GPT.</p>
+          </div>
+          <Button type="button" variant="ghost" onClick={copyBrief}>
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            {copied ? "Copied" : "Copy brief"}
+          </Button>
+        </div>
+        <textarea
+          readOnly
+          aria-label="Brief for the GPT"
+          className="mt-4 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+          rows={7}
+          value={planBrief}
+        />
+      </section>
+
+      {/* Editable Prompt Section */}
+      {selectedProfileId && systemPrompt && (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setShowPromptEditor(!showPromptEditor)}
+            aria-expanded={showPromptEditor}
+            aria-controls="prompt-editor"
+            className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-2xl px-5 py-4 text-left hover:bg-gray-50 sm:px-6"
+          >
+            <span className="min-w-0">
+              <span className="block text-base font-semibold text-gray-900">Advanced: edit the prompt</span>
+              <span className="mt-0.5 block text-sm text-gray-500">
+                {editMode ? "Editing is on. Your version is used when you generate here." : "See the full instructions sent to the GPT."}
+              </span>
+            </span>
+            <ChevronDown className={clsx("h-5 w-5 shrink-0 text-gray-400 transition-transform", showPromptEditor && "rotate-180")} aria-hidden />
+          </button>
+
+          {showPromptEditor && (
+            <div id="prompt-editor" className="space-y-4 border-t border-gray-100 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+              <label className="flex min-h-[40px] cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={editMode}
+                  onChange={(e) => {
+                    setEditMode(e.target.checked);
+                    if (!e.target.checked) {
+                      setEditedPrompt(systemPrompt);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 accent-indigo-600"
+                />
+                <span className="text-sm font-medium text-gray-900">Let me edit the prompt</span>
+              </label>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label htmlFor="system-prompt" className="text-[13px] font-semibold text-gray-700">
+                    Prompt
                   </label>
+                  {editMode && editedPrompt !== systemPrompt && (
+                    <Button type="button" variant="subtle" onClick={() => setEditedPrompt(systemPrompt)}>
+                      <RotateCcw aria-hidden />
+                      Reset to default
+                    </Button>
+                  )}
                 </div>
+                <textarea
+                  id="system-prompt"
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  readOnly={!editMode}
+                  aria-describedby="system-prompt-note"
+                  className={clsx(
+                    "h-64 w-full rounded-xl border p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-4 focus:ring-indigo-100",
+                    editMode ? "border-gray-300 bg-white text-gray-900 focus:border-indigo-500" : "border-gray-200 bg-gray-50 text-gray-600",
+                  )}
+                />
+                <p id="system-prompt-note" className="mt-1.5 text-xs text-gray-500">
+                  {editMode ? "Your changes are used for the next plan generated here." : "Read only. Turn on editing above to change it."}
+                </p>
+              </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-semibold text-gray-700">
-                      System Prompt:
-                    </label>
-                    {editMode && editedPrompt !== systemPrompt && (
-                      <button
-                        type="button"
-                        onClick={() => setEditedPrompt(systemPrompt)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                      >
-                        🔄 Reset to Default
-                      </button>
-                    )}
-                  </div>
-                  <textarea
-                    value={editedPrompt}
-                    onChange={(e) => setEditedPrompt(e.target.value)}
-                    disabled={!editMode}
-                    className={`w-full h-64 p-4 border rounded-xl font-mono text-sm transition-all ${
-                      editMode
-                        ? "bg-white border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-                        : "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
-                    }`}
-                    placeholder="System prompt will appear here..."
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {editMode
-                      ? "✅ Editing enabled - Your changes will be used for generation"
-                      : "🔒 Read-only mode - Enable editing above to customize"}
-                  </p>
-                </div>
-
-                <div>
-                  <details className="group">
-                    <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-indigo-600 flex items-center gap-1">
-                      <span className="group-open:rotate-90 transition-transform">▶</span>
-                      Expected JSON Response Format
-                    </summary>
-                    <pre className="mt-3 bg-gray-900 text-green-300 p-4 rounded-xl text-xs overflow-auto max-h-64 border border-gray-700">
+              <details className="group rounded-xl border border-gray-200">
+                <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-medium text-gray-700 hover:text-gray-900">
+                  Expected JSON response format
+                  <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" aria-hidden />
+                </summary>
+                <pre className="max-h-64 overflow-auto border-t border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
 {`{
   "plan_name": "7-Day Personalized Wellness Plan",
   "weekly_schedule": {
@@ -404,93 +628,54 @@ export default function UseCustomGPTPage() {
     "language": "English"
   }
 }`}
-                    </pre>
-                  </details>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <PlanBrief block={planBrief} copyBrief={() => navigator.clipboard.writeText(planBrief)} />
-
-        {plan && (
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 space-y-4">
-            <div className="flex flex-wrap gap-3 items-center justify-between">
-              <h2 className="text-2xl font-semibold text-gray-800 flex items-center gap-2">
-                <span className="text-2xl">📖</span> Custom GPT Plan
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="ghost" type="button" onClick={() => setShowJson(!showJson)}>
-                  {showJson ? "Hide JSON" : "View Full JSON"}
-                </Button>
-                <Button variant="ghost" type="button" onClick={downloadJson}>
-                  Download JSON
-                </Button>
-                <Button type="button" onClick={downloadPdf}>
-                  Download PDF
-                </Button>
-              </div>
+                </pre>
+              </details>
             </div>
+          )}
+        </section>
+      )}
 
-            <div ref={planRef}>
-              <PlanPreview plan={plan} />
+      {plan ? (
+        <section aria-labelledby="plan-title" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="plan-title" className="text-base font-semibold text-gray-900">
+              Your Custom GPT plan
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" type="button" onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
+                <FileJson aria-hidden />
+                {showJson ? "Hide JSON" : "View JSON"}
+              </Button>
+              <Button variant="ghost" type="button" onClick={downloadJson}>
+                <Download aria-hidden />
+                Download JSON
+              </Button>
+              <Button type="button" onClick={downloadPdf}>
+                <Download aria-hidden />
+                Download PDF
+              </Button>
             </div>
-
-            {showJson && (
-              <pre className="bg-gray-900 text-green-200 text-xs rounded-xl p-4 overflow-auto max-h-96">
-                {rawPlan}
-              </pre>
-            )}
           </div>
-        )}
 
-        {!plan && !error && !loading && (
-          <div className="bg-gray-50 rounded-2xl p-12 text-center border border-dashed border-gray-200">
-            <div className="text-6xl mb-4">🌟</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
-              No plan yet
-            </h3>
-            <p className="text-gray-600">
-              Configure your profile and click “Generate with Custom GPT” to get started.
-            </p>
+          <div ref={planRef}>
+            <PlanPreview plan={plan} />
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-type PlanBriefProps = {
-  block: string;
-  copyBrief: () => Promise<void> | void;
-};
-
-function PlanBrief({ block, copyBrief }: PlanBriefProps) {
-  return (
-    <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2 justify-between">
-        <div className="font-semibold text-purple-800 flex items-center gap-2">
-          <span className="text-xl">📝</span> GPT Prompt Snapshot
-        </div>
-        <button
-          onClick={copyBrief}
-          className="text-sm text-purple-600 hover:text-purple-800 font-semibold"
-        >
-          Copy Brief
-        </button>
-      </div>
-      <textarea
-        readOnly
-        aria-label="GPT Prompt Brief"
-        title="GPT Prompt Brief"
-        className="w-full border border-purple-200 rounded-lg bg-white/80 text-sm p-3 text-gray-700"
-        rows={6}
-        value={block}
-      />
-      <p className="text-xs text-purple-600">
-        The brief is automatically copied when you open the Custom GPT tab.
-      </p>
+          {showJson && (
+            <pre className="max-h-96 overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+              {rawPlan}
+            </pre>
+          )}
+        </section>
+      ) : (
+        !loading && (
+          <EmptyState
+            icon={Bot}
+            title="No plan yet"
+            description="Open the GPT and refresh when it is done, or generate the plan here."
+          />
+        )
+      )}
     </div>
   );
 }

@@ -4,8 +4,12 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { ArrowLeft, Bot, Check, CircleAlert, Copy, Download, ExternalLink, FileJson, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionCard } from "@/components/lifeengine/PlanConfigurator";
+import { GenerationProgress } from "@/components/lifeengine/GenerationProgress";
 import PlanPreview from "@/app/components/PlanPreview";
 import { CustomGPTForm } from "@/components/lifeengine/CustomGPTForm";
 import type { Profile } from "@/lib/ai/schemas";
@@ -55,11 +59,11 @@ export default function UseCustomGPTPage() {
   const openGPT = async () => {
     try {
       await navigator.clipboard.writeText(planBrief);
-      setSuccessMessage("✨ Prompt copied to clipboard! Opening ChatGPT...");
+      setSuccessMessage("Brief copied. Paste it into the GPT that just opened.");
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.warn("Failed to copy prompt", err);
-      setError("Failed to copy prompt to clipboard");
+      setError("Could not copy the brief. Select the text below and copy it.");
       setTimeout(() => setError(null), 3000);
     }
     window.open(GPT_URL, "_blank", "noopener,noreferrer");
@@ -99,7 +103,7 @@ export default function UseCustomGPTPage() {
       
       setPlan(result.plan);
       setRawPlan(JSON.stringify(result.plan, null, 2));
-      setSuccessMessage("🎉 Plan generated successfully!");
+      setSuccessMessage("Plan generated.");
       setTimeout(() => setSuccessMessage(null), 5000);
 
       // Save to localStorage for immediate UI access
@@ -124,12 +128,12 @@ export default function UseCustomGPTPage() {
 
         if (postResponse.ok) {
           const postData = await postResponse.json();
-          console.log(`✅ [CustomGPT] Plan saved to backend with ID: ${postData.plan_id}`);
+          console.log(`[CustomGPT] Plan saved to backend with ID: ${postData.plan_id}`);
         } else {
-          console.warn(`⚠️ [CustomGPT] Failed to save plan to backend:`, await postResponse.text());
+          console.warn(`[CustomGPT] Failed to save plan to backend:`, await postResponse.text());
         }
       } catch (backendError) {
-        console.warn(`⚠️ [CustomGPT] Could not save to backend:`, backendError);
+        console.warn(`[CustomGPT] Could not save to backend:`, backendError);
       }
     } catch (err: any) {
       const message = formatErrorMessage(err);
@@ -137,7 +141,7 @@ export default function UseCustomGPTPage() {
       try {
         const fallbackPlanId = await fallbackToRuleEngine(form, selectedProfileId);
         setSuccessMessage(
-          `⚠️ Custom GPT failed, but a rule-based plan was generated. Redirecting...`
+          `Custom GPT failed, so a plan from the built-in rules was created instead. Opening it now.`
         );
         setTimeout(() => {
           window.location.href = `/lifeengine/plan/${fallbackPlanId}`;
@@ -163,14 +167,14 @@ export default function UseCustomGPTPage() {
     a.download = `TH_LifeEngine_CustomGPT_${new Date().toISOString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setSuccessMessage("📥 JSON downloaded successfully!");
+    setSuccessMessage("JSON downloaded.");
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   const downloadPdf = async () => {
     if (!planRef.current || !plan) return;
     try {
-      setSuccessMessage("📄 Generating PDF... Please wait.");
+      setSuccessMessage("Creating the PDF. This takes a few seconds.");
       const canvas = await html2canvas(planRef.current, {
         scale: 2,
         useCORS: true,
@@ -196,7 +200,7 @@ export default function UseCustomGPTPage() {
       }
 
       pdf.save(`TH_LifeEngine_CustomGPT_${selectedProfile?.name ?? "plan"}.pdf`);
-      setSuccessMessage("✅ PDF downloaded successfully!");
+      setSuccessMessage("PDF downloaded.");
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error("PDF generation failed", err);
@@ -208,218 +212,140 @@ export default function UseCustomGPTPage() {
   const copyPromptToBrief = async () => {
     try {
       await navigator.clipboard.writeText(planBrief);
-      setSuccessMessage("📋 Prompt copied to clipboard!");
+      setSuccessMessage("Brief copied.");
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setError("Failed to copy prompt to clipboard");
+      setError("Could not copy the brief. Select the text below and copy it.");
       setTimeout(() => setError(null), 3000);
     }
   };
 
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-10">
-      <div className="max-w-5xl mx-auto px-6 space-y-6 animate-fade-in">
-        
-        {/* Header Card */}
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">🤖 AI Plan Generator</h1>
-                <p className="text-purple-100 text-lg">Generate personalized wellness plans using advanced AI</p>
-              </div>
-              <Link href="/lifeengine/dashboard">
-                <Button variant="ghost" className="bg-white/20 hover:bg-white/30 text-white border-white/50 backdrop-blur-sm">
-                  ← Dashboard
-                </Button>
-              </Link>
-            </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        eyebrow="New plan"
+        title="AI plan generator"
+        description="Generate a personalised wellness plan with the LifeEngine Custom GPT."
+        actions={
+          <Link
+            href="/lifeengine/dashboard"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Dashboard
+          </Link>
+        }
+      />
+
+      {successMessage && (
+        <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p className="min-w-0 flex-1">{successMessage}</p>
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p className="min-w-0 flex-1 break-words">{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        <CustomGPTForm
+          profiles={profiles}
+          selectedProfileId={selectedProfileId}
+          onProfileChange={setSelectedProfileId}
+          form={form}
+          setForm={setForm}
+        />
+
+        <SectionCard
+          id="step-generate"
+          step={4}
+          title="Generate"
+          description="Generate the plan here, or open the GPT in ChatGPT with the brief copied for you."
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button type="submit" disabled={loading || !selectedProfileId}>
+              <WandSparkles aria-hidden />
+              {loading ? "Generating..." : "Generate with Custom GPT"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={openGPT}>
+              <ExternalLink aria-hidden />
+              Open GPT in ChatGPT
+            </Button>
+            {!selectedProfileId && <p className="text-xs text-gray-500 sm:ml-2">Choose a profile in step 1 first.</p>}
           </div>
-        </Card>
+        </SectionCard>
+      </form>
 
-        {/* Success Message */}
-        {successMessage && (
-          <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-5 shadow-lg animate-slide-in">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">✅</span>
-              <p className="text-green-800 font-semibold text-lg">{successMessage}</p>
-            </div>
+      {loading && <GenerationProgress title="Generating with Custom GPT" estimatedSeconds={90} />}
+
+      <section aria-labelledby="brief-title" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="brief-title" className="text-base font-semibold text-gray-900">
+              Brief for the GPT
+            </h2>
+            <p className="mt-0.5 text-sm text-gray-500">Used to generate your plan, and copied when you open the GPT.</p>
           </div>
-        )}
+          <Button variant="ghost" type="button" onClick={copyPromptToBrief}>
+            <Copy aria-hidden />
+            Copy brief
+          </Button>
+        </div>
+        <textarea
+          readOnly
+          aria-label="Brief for the GPT"
+          className="mt-4 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+          rows={7}
+          value={planBrief}
+        />
+      </section>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 shadow-lg animate-slide-in">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">❌</span>
-              <div>
-                <p className="text-red-800 font-semibold text-lg mb-1">Error</p>
-                <p className="text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Configuration Form Card */}
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center gap-3 pb-6 border-b border-gray-200 mb-6">
-              <span className="text-4xl">📋</span>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Configure Your Plan</h2>
-                <p className="text-gray-600">Fill in the details below to generate a custom wellness plan</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleGenerate} className="space-y-6">
-              <CustomGPTForm
-                profiles={profiles}
-                selectedProfileId={selectedProfileId}
-                onProfileChange={setSelectedProfileId}
-                form={form}
-                setForm={setForm}
-              />
-              
-              <div className="flex flex-wrap gap-4 pt-4 border-t border-gray-200">
-                <Button 
-                  type="submit" 
-                  disabled={loading || !selectedProfileId}
-                  className="min-w-[200px]"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin">⏳</span> Generating...
-                    </span>
-                  ) : (
-                    "✨ Generate with Custom GPT"
-                  )}
-                </Button>
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  onClick={openGPT}
-                  className="min-w-[180px]"
-                >
-                  💬 Open GPT in Chat
-                </Button>
-              </div>
-            </form>
-          </div>
-        </Card>
-
-        {/* Plan Brief Card */}
-        <div className="bg-purple-50 border-2 border-purple-200 rounded-2xl p-6 shadow-lg">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">📝</span>
-                <div>
-                  <h3 className="text-xl font-bold text-purple-900">GPT Prompt Snapshot</h3>
-                  <p className="text-purple-700 text-sm">This prompt will be used to generate your plan</p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                onClick={copyPromptToBrief}
-                className="text-purple-600 hover:text-purple-800"
-              >
-                📋 Copy Brief
+      {plan ? (
+        <section aria-labelledby="plan-title" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="plan-title" className="text-base font-semibold text-gray-900">
+              Your Custom GPT plan
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" type="button" onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
+                <FileJson aria-hidden />
+                {showJson ? "Hide JSON" : "View JSON"}
+              </Button>
+              <Button variant="ghost" type="button" onClick={downloadJson}>
+                <Download aria-hidden />
+                Download JSON
+              </Button>
+              <Button type="button" onClick={downloadPdf}>
+                <Download aria-hidden />
+                Download PDF
               </Button>
             </div>
-            <textarea
-              readOnly
-              aria-label="GPT Prompt Brief"
-              title="GPT Prompt Brief"
-              className="w-full border-2 border-purple-200 rounded-lg bg-purple-50/50 text-sm p-4 text-gray-800 font-mono focus:outline-none focus:ring-2 focus:ring-purple-400"
-              rows={6}
-              value={planBrief}
-            />
-            <p className="text-xs text-purple-600 italic">
-              💡 The brief is automatically copied when you click "Open GPT in Chat"
-            </p>
           </div>
-        </div>
 
-        {/* Generated Plan Card */}
-        {plan && (
-          <Card className="animate-fade-in">
-            <div className="p-6 space-y-6">
-              <div className="flex flex-wrap gap-4 items-center justify-between pb-4 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                  <span className="text-3xl">📖</span> Your Custom GPT Plan
-                </h2>
-                <div className="flex flex-wrap gap-3">
-                  <Button 
-                    variant="ghost" 
-                    type="button" 
-                    onClick={() => setShowJson(!showJson)}
-                    className="text-sm"
-                  >
-                    {showJson ? "👁️ Hide JSON" : "🔍 View JSON"}
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    type="button" 
-                    onClick={downloadJson}
-                    className="text-sm"
-                  >
-                    📥 Download JSON
-                  </Button>
-                  <Button 
-                    type="button" 
-                    onClick={downloadPdf}
-                    className="text-sm"
-                  >
-                    📄 Download PDF
-                  </Button>
-                </div>
-              </div>
-
-              <div ref={planRef}>
-                <PlanPreview plan={plan} />
-              </div>
-
-              {showJson && (
-                <div className="animate-slide-in">
-                  <div className="bg-gray-900 text-green-400 text-xs rounded-xl p-5 overflow-auto max-h-[500px] font-mono shadow-inner">
-                    <div className="flex items-center gap-2 mb-3 text-green-300 font-semibold">
-                      <span>📝</span>
-                      <span>Raw JSON Output</span>
-                    </div>
-                    <pre>{rawPlan}</pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {/* Empty State Card */}
-        {!plan && !loading && (
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-dashed border-gray-300 rounded-2xl p-16 text-center shadow-inner animate-fade-in">
-            <div className="text-8xl mb-6 animate-bounce-slow">🌟</div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-3">
-              Ready to Create Your Plan?
-            </h3>
-            <p className="text-gray-600 text-lg max-w-md mx-auto mb-6">
-              Configure your profile above and click <strong className="text-purple-600">"Generate with Custom GPT"</strong> to get started.
-            </p>
-            <div className="flex flex-wrap gap-3 justify-center items-center text-sm text-gray-500">
-              <span className="flex items-center gap-2">
-                <span className="text-lg">✨</span> AI-powered generation
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-2">
-                <span className="text-lg">🎯</span> Personalized for you
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-2">
-                <span className="text-lg">⚡</span> Ready in seconds
-              </span>
-            </div>
+          <div ref={planRef}>
+            <PlanPreview plan={plan} />
           </div>
-        )}
-      </div>
-    </main>
+
+          {showJson && (
+            <pre className="max-h-[500px] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+              {rawPlan}
+            </pre>
+          )}
+        </section>
+      ) : (
+        !loading && (
+          <EmptyState
+            icon={Bot}
+            title="No plan yet"
+            description="Choose a profile, set up the plan above and select Generate with Custom GPT."
+          />
+        )
+      )}
+    </div>
   );
 }
