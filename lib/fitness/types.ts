@@ -381,6 +381,8 @@ export interface ReadinessScreen {
 export interface FitnessProfile {
   id: string;
   name: string;
+  /** Id of the person in /lifeengine/profiles this fitness profile was started from. */
+  sourceProfileId?: string;
   createdAt: string;
   updatedAt: string;
 

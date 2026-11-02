@@ -967,7 +967,7 @@ export function buildFitnessPlan(profile: FitnessProfile, options: BuildPlanOpti
     profileId: profile.id,
     profileName: profile.name,
     createdAt: new Date().toISOString(),
-    title: `${merged.primary.label} — ${weeksCount}-week activity plan`,
+    title: `${merged.primary.label}: ${weeksCount}-week activity plan`,
     summary: `${summaryParts.join(", ")}. Sessions average ${Math.min(profile.minutesPerSession, merged.sessionMinutes.max)} minutes, building from ${weeks[0].targetWeeklyMinutes} to about ${Math.max(...weeks.map((w) => w.targetWeeklyMinutes))} active minutes a week.`,
     goals: merged.all.map((g) => ({ id: g.id, label: g.label, purpose: g.purpose, mechanism: g.mechanism })),
     primaryGoal: profile.primaryGoal,
