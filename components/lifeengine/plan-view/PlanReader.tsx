@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { usePlanProgress } from "@/lib/planProgress/usePlanProgress";
 import { DayPager, DayStepper, PlanDayNav, panelId, tabId, type DayNavItem } from "./PlanDayNav";
+import { DayProgressContext, planIdFromPath, type DayProgressContextValue } from "./progress";
 
 /**
  * Day navigation plus the selected day's panel. Opens on today when the plan
@@ -16,6 +19,7 @@ export function PlanReader({
   layout = "responsive",
   sticky = true,
   onChange,
+  progressId,
 }: {
   items: DayNavItem[];
   idPrefix: string;
@@ -24,7 +28,15 @@ export function PlanReader({
   sticky?: boolean;
   /** Told about the selected day, including the first one (today when the plan has dates). */
   onChange?: (index: number) => void;
+  /**
+   * Where "Done" ticks are saved. Defaults to the plan id in the URL on the
+   * plan pages; pass null to hide the ticks (for example in a preview).
+   */
+  progressId?: string | null;
 }) {
+  const pathname = usePathname();
+  const planId = progressId === undefined ? planIdFromPath(pathname) : progressId;
+  const tracker = usePlanProgress(planId);
   const todayIndex = items.findIndex((item) => item.isToday);
   const [selected, setSelected] = useState(todayIndex >= 0 ? todayIndex : 0);
   const current = Math.min(selected, Math.max(0, items.length - 1));
@@ -67,6 +79,26 @@ export function PlanReader({
     return () => document.removeEventListener("keydown", onKey);
   }, [current, select]);
 
+  const navItems = useMemo(
+    () => (tracker.enabled ? items.map((item, index) => ({ ...item, done: tracker.isDayDone(index) })) : items),
+    [items, tracker],
+  );
+
+  const { setItemDone, setDayDone } = tracker;
+  const dayDone = tracker.progress[String(current)];
+  const progressValue = useMemo<DayProgressContextValue | null>(
+    () =>
+      tracker.enabled
+        ? {
+            dayIndex: current,
+            done: dayDone ?? {},
+            setItemDone: (itemId, done, allItemIds) => setItemDone(current, itemId, done, allItemIds),
+            setDayDone: (done, allItemIds) => setDayDone(current, done, allItemIds),
+          }
+        : null,
+    [tracker.enabled, current, dayDone, setItemDone, setDayDone],
+  );
+
   if (!items.length) return null;
   const headingId = `${idPrefix}-day-title`;
   const stepper = (
@@ -83,7 +115,7 @@ export function PlanReader({
         )}
       >
         <PlanDayNav
-          items={items}
+          items={navItems}
           current={current}
           onSelect={(index) => select(index, { scroll: true })}
           idPrefix={idPrefix}
@@ -97,7 +129,7 @@ export function PlanReader({
         aria-labelledby={tabId(idPrefix, current)}
         className={clsx("mt-4 min-w-0 scroll-mt-32 lg:scroll-mt-8", layout === "responsive" && "lg:mt-0")}
       >
-        {renderDay(current, { headingId, stepper })}
+        <DayProgressContext.Provider value={progressValue}>{renderDay(current, { headingId, stepper })}</DayProgressContext.Provider>
         <DayPager items={items} current={current} onSelect={(index) => select(index)} />
       </div>
     </div>

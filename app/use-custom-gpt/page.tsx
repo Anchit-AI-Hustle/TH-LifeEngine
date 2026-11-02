@@ -74,6 +74,7 @@ export default function UseCustomGPTPage() {
   const [showJson, setShowJson] = useState(false);
   const [latest, setLatest] = useState<LatestStatus>({ state: "idle" });
   const [copied, setCopied] = useState(false);
+  const [showBrief, setShowBrief] = useState(false);
   const planRef = useRef<HTMLDivElement>(null);
 
   // Editable prompt feature
@@ -103,7 +104,13 @@ export default function UseCustomGPTPage() {
   }, [selectedProfileId]);
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
-  const planBrief = describePlanBrief(selectedProfileId || "unknown", form);
+  // Without a profile the brief simply leaves the profile line out (never "unknown").
+  const planBrief = selectedProfileId
+    ? describePlanBrief(selectedProfileId, form)
+    : describePlanBrief("", form)
+        .split("\n")
+        .filter((line) => !line.startsWith("profile_id:"))
+        .join("\n");
 
   // Generate the full system prompt for preview/editing
   useEffect(() => {
@@ -493,100 +500,123 @@ export default function UseCustomGPTPage() {
         <GenerationProgress title="Generating with Custom GPT" estimatedSeconds={90} />
       )}
 
-      {/* Brief */}
-      <section aria-labelledby="brief-title" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 id="brief-title" className="text-base font-semibold text-gray-900">
-              Brief for the GPT
-            </h2>
-            <p className="mt-0.5 text-sm text-gray-500">Copied for you when you open the GPT.</p>
-          </div>
-          <Button type="button" variant="ghost" onClick={copyBrief}>
-            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-            {copied ? "Copied" : "Copy brief"}
-          </Button>
-        </div>
-        <textarea
-          readOnly
-          aria-label="Brief for the GPT"
-          className="mt-4 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
-          rows={7}
-          value={planBrief}
-        />
-      </section>
-
-      {/* Editable Prompt Section */}
-      {selectedProfileId && systemPrompt && (
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <button
-            type="button"
-            onClick={() => setShowPromptEditor(!showPromptEditor)}
-            aria-expanded={showPromptEditor}
-            aria-controls="prompt-editor"
-            className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-2xl px-5 py-4 text-left hover:bg-gray-50 sm:px-6"
-          >
-            <span className="min-w-0">
-              <span className="block text-base font-semibold text-gray-900">Advanced: edit the prompt</span>
-              <span className="mt-0.5 block text-sm text-gray-500">
-                {editMode ? "Editing is on. Your version is used when you generate here." : "See the full instructions sent to the GPT."}
-              </span>
+      {/* What the GPT receives: technical detail, collapsed by default */}
+      <section aria-labelledby="brief-title" className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowBrief((open) => !open)}
+          aria-expanded={showBrief}
+          aria-controls="gpt-brief-panel"
+          className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-2xl px-5 py-4 text-left hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 sm:px-6"
+        >
+          <span className="min-w-0">
+            <span id="brief-title" className="block text-base font-semibold text-gray-900">
+              Show what the GPT receives
             </span>
-            <ChevronDown className={clsx("h-5 w-5 shrink-0 text-gray-400 transition-transform", showPromptEditor && "rotate-180")} aria-hidden />
-          </button>
+            <span className="mt-0.5 block text-sm text-gray-500">
+              Optional. The short brief we copy for you{selectedProfileId ? ", and the full instructions" : ""}.
+            </span>
+          </span>
+          <ChevronDown className={clsx("h-5 w-5 shrink-0 text-gray-400 transition-transform", showBrief && "rotate-180")} aria-hidden />
+        </button>
 
-          {showPromptEditor && (
-            <div id="prompt-editor" className="space-y-4 border-t border-gray-100 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-              <label className="flex min-h-[40px] cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={editMode}
-                  onChange={(e) => {
-                    setEditMode(e.target.checked);
-                    if (!e.target.checked) {
-                      setEditedPrompt(systemPrompt);
-                    }
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 accent-indigo-600"
-                />
-                <span className="text-sm font-medium text-gray-900">Let me edit the prompt</span>
-              </label>
-
-              <div>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <label htmlFor="system-prompt" className="text-[13px] font-semibold text-gray-700">
-                    Prompt
-                  </label>
-                  {editMode && editedPrompt !== systemPrompt && (
-                    <Button type="button" variant="subtle" onClick={() => setEditedPrompt(systemPrompt)}>
-                      <RotateCcw aria-hidden />
-                      Reset to default
-                    </Button>
-                  )}
-                </div>
-                <textarea
-                  id="system-prompt"
-                  value={editedPrompt}
-                  onChange={(e) => setEditedPrompt(e.target.value)}
-                  readOnly={!editMode}
-                  aria-describedby="system-prompt-note"
-                  className={clsx(
-                    "h-64 w-full rounded-xl border p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-4 focus:ring-indigo-100",
-                    editMode ? "border-gray-300 bg-white text-gray-900 focus:border-indigo-500" : "border-gray-200 bg-gray-50 text-gray-600",
-                  )}
-                />
-                <p id="system-prompt-note" className="mt-1.5 text-xs text-gray-500">
-                  {editMode ? "Your changes are used for the next plan generated here." : "Read only. Turn on editing above to change it."}
-                </p>
+        {showBrief && (
+          <div id="gpt-brief-panel" className="space-y-6 border-t border-gray-100 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label htmlFor="gpt-brief" className="text-sm font-semibold text-gray-900">
+                  Brief
+                </label>
+                <Button type="button" variant="ghost" onClick={copyBrief}>
+                  {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+                  {copied ? "Copied" : "Copy brief"}
+                </Button>
               </div>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {selectedProfileId
+                  ? "Copied for you when you open the GPT."
+                  : "Copied for you when you open the GPT. Choose a profile in step 1 to add who the plan is for."}
+              </p>
+              <textarea
+                id="gpt-brief"
+                readOnly
+                className="mt-3 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+                rows={7}
+                value={planBrief}
+              />
+            </div>
 
-              <details className="group rounded-xl border border-gray-200">
-                <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-medium text-gray-700 hover:text-gray-900">
-                  Expected JSON response format
-                  <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" aria-hidden />
-                </summary>
-                <pre className="max-h-64 overflow-auto border-t border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
-{`{
+            {/* Editable prompt */}
+            {selectedProfileId && systemPrompt && (
+              <section className="rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptEditor(!showPromptEditor)}
+                  aria-expanded={showPromptEditor}
+                  aria-controls="prompt-editor"
+                  className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-gray-900">Advanced: edit the full instructions</span>
+                    <span className="mt-0.5 block text-sm text-gray-500">
+                      {editMode ? "Editing is on. Your version is used when you generate here." : "See the full instructions sent to the GPT."}
+                    </span>
+                  </span>
+                  <ChevronDown className={clsx("h-5 w-5 shrink-0 text-gray-400 transition-transform", showPromptEditor && "rotate-180")} aria-hidden />
+                </button>
+
+                {showPromptEditor && (
+                  <div id="prompt-editor" className="space-y-4 border-t border-gray-100 px-4 pb-4 pt-4">
+                    <label className="flex min-h-[40px] cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={editMode}
+                        onChange={(e) => {
+                          setEditMode(e.target.checked);
+                          if (!e.target.checked) {
+                            setEditedPrompt(systemPrompt);
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 accent-indigo-600"
+                      />
+                      <span className="text-sm font-medium text-gray-900">Let me edit the prompt</span>
+                    </label>
+
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <label htmlFor="system-prompt" className="text-[13px] font-semibold text-gray-700">
+                          Prompt
+                        </label>
+                        {editMode && editedPrompt !== systemPrompt && (
+                          <Button type="button" variant="subtle" onClick={() => setEditedPrompt(systemPrompt)}>
+                            <RotateCcw aria-hidden />
+                            Reset to default
+                          </Button>
+                        )}
+                      </div>
+                      <textarea
+                        id="system-prompt"
+                        value={editedPrompt}
+                        onChange={(e) => setEditedPrompt(e.target.value)}
+                        readOnly={!editMode}
+                        aria-describedby="system-prompt-note"
+                        className={clsx(
+                          "h-64 w-full rounded-xl border p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-4 focus:ring-indigo-100",
+                          editMode ? "border-gray-300 bg-white text-gray-900 focus:border-indigo-500" : "border-gray-200 bg-gray-50 text-gray-600",
+                        )}
+                      />
+                      <p id="system-prompt-note" className="mt-1.5 text-xs text-gray-500">
+                        {editMode ? "Your changes are used for the next plan generated here." : "Read only. Turn on editing above to change it."}
+                      </p>
+                    </div>
+
+                    <details className="group rounded-xl border border-gray-200">
+                      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-medium text-gray-700 hover:text-gray-900">
+                        Expected JSON response format
+                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" aria-hidden />
+                      </summary>
+                      <pre className="max-h-64 overflow-auto border-t border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+      {`{
   "plan_name": "7-Day Personalized Wellness Plan",
   "weekly_schedule": {
     "monday": {
@@ -628,12 +658,15 @@ export default function UseCustomGPTPage() {
     "language": "English"
   }
 }`}
-                </pre>
-              </details>
-            </div>
-          )}
-        </section>
-      )}
+                      </pre>
+                    </details>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        )}
+      </section>
 
       {plan ? (
         <section aria-labelledby="plan-title" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
