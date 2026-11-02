@@ -5,6 +5,7 @@ import { Cpu, Sparkles, Trash2, Check } from "lucide-react";
 import clsx from "clsx";
 import { useAppVersion } from "@/components/providers/AppVersionProvider";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { DeleteAccount } from "./DeleteAccount";
 
 const ENGINES = [
   {
@@ -37,7 +38,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Settings" description="Choose how plans are generated and manage data saved in this browser." />
+      <PageHeader title="Settings" description="Choose how plans are made, and manage the data saved in this browser and in your account." />
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-base font-semibold text-gray-900">How plans are made</h2>
@@ -113,6 +114,8 @@ export default function SettingsPage() {
           </button>
         )}
       </section>
+
+      <DeleteAccount />
     </div>
   );
 }

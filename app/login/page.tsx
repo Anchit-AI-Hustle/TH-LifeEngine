@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Errors>({});
   const [exists, setExists] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const mobileRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
   // Set synchronously, so an autofill that fills the PIN and submits in the
@@ -29,7 +30,9 @@ export default function LoginPage() {
 
   // /login?mode=signup opens the sign-up tab.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('mode') === 'signup') setMode('signup');
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('mode') === 'signup') setMode('signup');
+    if (q.get('deleted') === '1') setDeleted(true);
   }, []);
 
   const switchMode = (next: Mode) => {
@@ -237,6 +240,12 @@ export default function LoginPage() {
                     {errors.confirm}
                   </p>
                 )}
+              </div>
+            )}
+
+            {deleted && !errors.form && (
+              <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Your account and everything saved in it have been deleted.
               </div>
             )}
 
