@@ -3,8 +3,9 @@
 // through the same APIs and stores the screens use, so the dashboard, habits,
 // sleep and fitness pages all have real data straight away.
 //
-// Safe to run again: habits are not duplicated, nights already logged are
-// kept, and the fitness profile is reused.
+// Safe to run again: plans and the diet plan the person already has are
+// reused, habits are not duplicated, nights already logged are kept, and the
+// fitness profile is reused.
 import { formatErrorMessage, generatePlan } from '@/lib/lifeengine/api';
 import { HABIT_TEMPLATES } from '@/lib/habits/templates';
 import { loadHabits, newId as newHabitId, saveHabits } from '@/lib/habits/store';
@@ -12,7 +13,17 @@ import { loadSleep, newId as newSleepId, saveSleep } from '@/lib/sleep/store';
 import { createBlankProfile } from '@/lib/fitness/samples';
 import { buildFitnessPlan } from '@/lib/fitness/engine';
 import { logTemplateFromPlan } from '@/lib/fitness/tracker';
-import { getFitnessProfileForSource, getFitnessProfiles, saveFitnessPlan, saveFitnessProfile, saveLog, setActiveProfileId } from '@/lib/fitness/store';
+import { loadDietPlan, saveDietPlan, type SavedDietPlan } from '@/lib/diet/store';
+import {
+  getFitnessProfileForSource,
+  getFitnessProfiles,
+  getLatestPlanForProfile,
+  getLog,
+  saveFitnessPlan,
+  saveFitnessProfile,
+  saveLog,
+  setActiveProfileId,
+} from '@/lib/fitness/store';
 import type { DailyLog, FitnessProfile, GoalId } from '@/lib/fitness/types';
 import type { Habit } from '@/lib/habits/types';
 import {
@@ -71,6 +82,19 @@ async function createProfile(input: NewProfileInput): Promise<ProfileBrief> {
 }
 
 /* --------------------------------------------------------------- plans */
+
+type PlanBrief = { id: string; source?: string };
+
+/** The person's saved plans; an empty list if they cannot be read. */
+async function existingPlans(profileId: string): Promise<PlanBrief[]> {
+  try {
+    const res = await fetch(`/api/lifeengine/listPlans?profileId=${encodeURIComponent(profileId)}`, { cache: 'no-store' });
+    const data = await json<{ plans?: PlanBrief[] }>(res);
+    return data.plans ?? [];
+  } catch {
+    return [];
+  }
+}
 
 function planPayload(p: ProfileBrief, appVersion: 'current' | 'oss') {
   const types = planTypesFor(p);
@@ -177,11 +201,14 @@ function seedFitness(p: ProfileBrief): string {
   if (!existing) saveFitnessProfile(profile);
   setActiveProfileId(profile.id);
 
-  const plan = buildFitnessPlan(profile, { weeks: 4, startDate: dateKey(7) });
-  saveFitnessPlan(plan);
+  const reused = existing ? getLatestPlanForProfile(profile.id) : undefined;
+  const plan = reused ?? buildFitnessPlan(profile, { weeks: 4, startDate: dateKey(7) });
+  if (!reused) saveFitnessPlan(plan);
 
   const days = trackerDays(p.id, profile.weightKg, 7, new Date(), themesFor(p).includes('weight'));
+  let added = 0;
   days.forEach((d, i) => {
+    if (getLog(profile.id, d.date)) return; // never overwrite a real check-in
     let activities: DailyLog['activities'] = [];
     if (d.adherence === 'completed' || d.adherence === 'partial') {
       try {
@@ -211,8 +238,10 @@ function seedFitness(p: ProfileBrief): string {
       updatedAt: new Date().toISOString(),
     };
     saveLog(log);
+    added++;
   });
-  return `${plan.title} with 7 check-ins`;
+  if (reused && !added) return `${plan.title}: already set up`;
+  return added ? `${plan.title} with ${added} check-ins` : plan.title;
 }
 
 /* ----------------------------------------------------------------- run */
@@ -250,17 +279,24 @@ export async function runFirstWeek(
   const p: ProfileBrief = profile;
 
   // 2-3. plans: a fast one first so the dashboard fills even if AI is slow or down
+  const plans = await existingPlans(p.id);
+  const quick = plans.find((x) => x.source === 'rule-engine');
+  const ai = plans.find((x) => x.source === 'gemini');
   await step('quickPlan', async () => {
+    if (quick) return { detail: 'Already on your dashboard', href: `/lifeengine/plan/${quick.id}` };
     const r = await generatePlan(planPayload(p, 'oss'));
     return { detail: 'Saved to your dashboard', href: `/lifeengine/plan/${r.planId}` };
   });
   await step('aiPlan', async () => {
+    if (ai) return { detail: 'Already on your dashboard', href: `/lifeengine/plan/${ai.id}` };
     const r = await generatePlan(planPayload(p, 'current'));
     return { detail: 'Saved to your dashboard', href: `/lifeengine/plan/${r.planId}` };
   });
 
   // 4. diet
   await step('diet', async () => {
+    const have = loadDietPlan(p.id);
+    if (have) return { detail: `Already set: about ${have.generatedPlan.dailyCalories} kcal a day`, href: '/lifeengine/diet' };
     const res = await fetch('/api/lifeengine/diet/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -275,7 +311,8 @@ export async function runFirstWeek(
         },
       }),
     });
-    const data = await json<{ plan?: { generatedPlan?: { dailyCalories?: number } } }>(res);
+    const data = await json<{ plan?: SavedDietPlan }>(res);
+    if (data.plan && !saveDietPlan(data.plan)) throw new Error('This browser refused to save the diet plan.');
     const kcal = data.plan?.generatedPlan?.dailyCalories;
     return { detail: kcal ? `About ${kcal} kcal a day, vegetarian Indian meals` : 'Diet plan created', href: '/lifeengine/diet' };
   });

@@ -35,6 +35,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GENDER_LABEL, ProfileAvatar } from "../profiles/ProfileAvatar";
+import { loadDietPlan, saveDietPlan } from "@/lib/diet/store";
 
 interface Profile {
   id: string;
@@ -181,6 +182,13 @@ export default function DietBuilderPage() {
     loadProfiles();
   }, []);
 
+  // Show the person's latest saved plan; switching person shows theirs.
+  useEffect(() => {
+    if (!selectedProfileId) return;
+    setGeneratedPlan(loadDietPlan(selectedProfileId));
+    setChecked(new Set());
+  }, [selectedProfileId]);
+
   const loadProfiles = async () => {
     setProfilesLoading(true);
     setProfilesError(false);
@@ -238,6 +246,7 @@ export default function DietBuilderPage() {
 
       const data = await response.json();
       setGeneratedPlan(data.plan);
+      if (data.plan) saveDietPlan(data.plan);
       setChecked(new Set());
       requestAnimationFrame(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });

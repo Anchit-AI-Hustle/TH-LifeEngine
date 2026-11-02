@@ -56,7 +56,10 @@ export async function writeJson(key: string, value: unknown): Promise<void> {
   if (!useBlob()) {
     const file = path.join(LOCAL_ROOT, key);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, body, 'utf-8');
+    // Write then rename, so a reader never sees a half-written file.
+    const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+    await fs.writeFile(tmp, body, 'utf-8');
+    await fs.rename(tmp, file);
     return;
   }
   await put(key, body, {

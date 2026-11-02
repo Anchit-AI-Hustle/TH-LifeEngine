@@ -17,9 +17,6 @@ const dietRequestSchema = z.object({
   }),
 });
 
-// In-memory storage for demo (replace with database in production)
-let dietPlans: any[] = [];
-
 export async function POST(request: NextRequest) {
   try {
     const apiKey = geminiApiKey();
@@ -133,9 +130,7 @@ Ensure the plan is realistic, nutritionally balanced, and considers all restrict
       createdAt: new Date().toISOString(),
     };
 
-    // Store in memory (replace with database)
-    dietPlans.push(dietPlan);
-
+    // Kept by the browser and synced to the account (lib/diet/store.ts).
     return NextResponse.json({
       plan: dietPlan,
       success: true,
@@ -156,17 +151,4 @@ Ensure the plan is realistic, nutritionally balanced, and considers all restrict
       { status: 500 }
     );
   }
-}
-
-// GET endpoint to retrieve diet plans
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const profileId = searchParams.get("profileId");
-
-  if (profileId) {
-    const userPlans = dietPlans.filter(plan => plan.profileId === profileId);
-    return NextResponse.json({ plans: userPlans });
-  }
-
-  return NextResponse.json({ plans: dietPlans });
 }
