@@ -5,6 +5,8 @@ import {
   Bot,
   HeartPulse,
   LayoutDashboard,
+  ListChecks,
+  Moon,
   Salad,
   Sparkles,
   Users,
@@ -32,6 +34,20 @@ const ACTIONS: { href: string; title: string; body: string; icon: LucideIcon; ti
     body: "Tick off sessions, log pain, mood, sleep and weight, and watch the trends.",
     icon: Activity,
     tint: "bg-emerald-50 text-emerald-600",
+  },
+  {
+    href: "/lifeengine/habits",
+    title: "Build daily habits",
+    body: "Water, walks, pranayama, sleep on time: tick them off, keep streaks, run 21-day challenges.",
+    icon: ListChecks,
+    tint: "bg-amber-50 text-amber-600",
+  },
+  {
+    href: "/lifeengine/sleep",
+    title: "Log your sleep",
+    body: "Bedtime, wake time and how you slept, with averages, sleep debt and tips from your own nights.",
+    icon: Moon,
+    tint: "bg-indigo-50 text-indigo-600",
   },
   {
     href: "/lifeengine/diet",
@@ -101,7 +117,7 @@ export default function Home() {
         <h2 id="actions-title" className="text-lg font-semibold text-gray-900">
           What would you like to do?
         </h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
           {ACTIONS.map(({ href, title, body, icon: Icon, tint }) => (
             <Link
               key={href}

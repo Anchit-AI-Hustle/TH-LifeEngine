@@ -58,7 +58,7 @@ export default function CustomGPTPage() {
 
     setLoading(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    setLoadingMessage("Connecting to GPT-4");
+    setLoadingMessage("Connecting to the AI");
 
     try {
       // Transform PlanFormData to CustomGPTFormData
@@ -83,7 +83,7 @@ export default function CustomGPTPage() {
       setLoadingMessage("Building your personalised prompt");
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      setLoadingMessage("GPT-4 is writing your plan");
+      setLoadingMessage("The AI is writing your plan");
       
       // Call API
       const response = await fetch("/api/openai/generate-plan", {
@@ -136,13 +136,13 @@ export default function CustomGPTPage() {
     <div className="mx-auto max-w-6xl">
       <PageHeader
         eyebrow="New plan"
-        title="Create with GPT-4"
-        description="Fill in the details and GPT-4 writes a day-by-day plan you can read like a notebook and download as a PDF."
+        title="Create with AI"
+        description="Fill in the details and the AI writes a day-by-day plan you can read like a notebook and download as a PDF."
       />
 
       {loading && (
         <div className="mx-auto max-w-3xl">
-          <GenerationProgress title="Creating your plan with GPT-4" statusText={loadingMessage} estimatedSeconds={45} />
+          <GenerationProgress title="Creating your plan" statusText={loadingMessage} estimatedSeconds={45} />
         </div>
       )}
 
@@ -162,7 +162,7 @@ export default function CustomGPTPage() {
                 formData={formData}
                 setFormData={setFormData}
                 errors={formErrors}
-                profileDescription="Who the plan is for. GPT-4 adapts the pace, food and timings to these details."
+                profileDescription="Who the plan is for. The AI adapts the pace, food and timings to these details."
               />
 
               <section
@@ -177,7 +177,7 @@ export default function CustomGPTPage() {
                     <h2 id="generate-title" className="text-base font-semibold text-gray-900">
                       <span className="sr-only">Step 4: </span>Generate
                     </h2>
-                    <p className="mt-0.5 text-sm text-gray-500">GPT-4 usually takes 30 to 60 seconds.</p>
+                    <p className="mt-0.5 text-sm text-gray-500">It usually takes 30 to 60 seconds.</p>
                   </div>
                 </div>
 
@@ -216,7 +216,7 @@ export default function CustomGPTPage() {
                 <div className="mt-5">
                   <Button type="submit" disabled={loading} className="w-full sm:w-auto">
                     <WandSparkles aria-hidden />
-                    Generate with GPT-4
+                    Generate plan
                   </Button>
                 </div>
               </section>
@@ -230,7 +230,7 @@ export default function CustomGPTPage() {
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Prompt preview</p>
                   <h2 id="prompt-title" className="mt-1 text-base font-semibold text-gray-900">
-                    What GPT-4 receives
+                    What the AI receives
                   </h2>
                 </div>
                 <Button
