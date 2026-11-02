@@ -255,10 +255,11 @@ export async function POST(req: NextRequest) {
       const fastLaneEligible = SHORT_PLAN_FAST_LANE_MODEL !== STANDARD_PLAN_MODEL && daysCount <= SHORT_PLAN_FAST_LANE_DAYS;
       isShortPlanFastLane = fastLaneEligible;
       
-      const estimatedTokensNeeded = Math.min(
-        4000 + (daysCount * 2000),
-        32768
-      );
+      // Current Gemini models think before answering, and the thinking counts
+      // against maxOutputTokens: a 7-day plan with 18k tokens was cut off after
+      // ~3.4k tokens of thinking. Leave room for both (billing is per token
+      // used, so a higher cap costs nothing by itself). 7 days -> 40k.
+      const estimatedTokensNeeded = Math.min(12000 + daysCount * 4000, 65536);
       
       console.log(`📊 [GENERATE] Allocating ${estimatedTokensNeeded} tokens for ${daysCount}-day plan`);
       
@@ -700,7 +701,7 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks. Be thorough and deta
       logger.info('✅ Cost-optimized mode: Gemini API usage', {
         model: selectedModelName,
         inputTokens: `${inputTokens} tokens (saved ~${Math.max(0, 1200 - inputTokens)} tokens!)`,
-        outputTokens: `${outputTokens} tokens (max: 16384)`,
+        outputTokens: `${outputTokens} tokens`,
         totalTokens,
         estimatedCost: `$${estimatedCost.toFixed(6)}`,
         estimatedCostINR: `₹${(estimatedCost * 84).toFixed(4)}`,
