@@ -1,26 +1,41 @@
+/* Form control: 40px tall, 10px radius, indigo focus ring. */
 .input {
   width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
   background: var(--panel);
   color: var(--text);
   font-size: 14px;
-  line-height: 1.5;
-  transition: border-color var(--dur-med) ease-out;
+  line-height: 1.4;
+  transition: border-color var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
+}
+
+.input::placeholder {
+  color: var(--subtle);
+}
+
+.input:hover:not(:disabled):not(:focus) {
+  border-color: var(--subtle);
 }
 
 .input:focus {
   outline: none;
   border-color: var(--focus);
-  box-shadow: 0 0 0 3px var(--accent-quiet);
+  box-shadow: var(--ring);
 }
 
 .input.is-error {
   border-color: var(--error);
 }
 
+.input.is-error:focus {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+}
+
 .input:disabled {
-  opacity: 0.5;
+  background: var(--panel-muted);
+  color: var(--muted);
   cursor: not-allowed;
 }

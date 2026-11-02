@@ -1,35 +1,34 @@
 "use client";
 
-import { Button } from "./Button";
 import clsx from "clsx";
+import type { LucideIcon } from "lucide-react";
 
 type EmptyStateProps = {
-  icon?: React.ReactNode;
+  icon?: LucideIcon;
   title: string;
   description?: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  /** A link or button rendered under the text. */
+  action?: React.ReactNode;
   className?: string;
 };
 
-export function EmptyState({ icon, title, description, actionLabel, onAction, className }: EmptyStateProps) {
+/** The one empty state: icon in a soft tile, a short title, one line of help, one action. */
+export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div
       className={clsx(
-        "flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600",
+        "flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center",
         className,
       )}
     >
-      {icon ? <div className="text-3xl">{icon}</div> : null}
-      <div className="space-y-1">
-        <h3 className="text-base font-semibold text-slate-800">{title}</h3>
-        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-      </div>
-      {actionLabel ? (
-        <Button type="button" variant="primary" onClick={onAction}>
-          {actionLabel}
-        </Button>
+      {Icon ? (
+        <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+          <Icon className="h-6 w-6" aria-hidden />
+        </span>
       ) : null}
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      {description ? <p className="mt-1 max-w-sm text-sm text-gray-600">{description}</p> : null}
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }

@@ -1,28 +1,47 @@
+/* Form control: 40px tall, 10px radius, indigo focus ring. */
 .textarea {
   width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
   background: var(--panel);
   color: var(--text);
   font-size: 14px;
-  line-height: 1.5;
-  transition: border-color var(--dur-med) ease-out;
-  resize: vertical;
-  min-height: 80px;
+  line-height: 1.4;
+  transition: border-color var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
+}
+
+.textarea::placeholder {
+  color: var(--subtle);
+}
+
+.textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--subtle);
 }
 
 .textarea:focus {
   outline: none;
   border-color: var(--focus);
-  box-shadow: 0 0 0 3px var(--accent-quiet);
+  box-shadow: var(--ring);
 }
 
 .textarea.is-error {
   border-color: var(--error);
 }
 
+.textarea.is-error:focus {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+}
+
 .textarea:disabled {
-  opacity: 0.5;
+  background: var(--panel-muted);
+  color: var(--muted);
   cursor: not-allowed;
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
 }

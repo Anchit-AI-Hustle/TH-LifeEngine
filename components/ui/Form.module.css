@@ -7,20 +7,28 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.required {
+  margin-left: 4px;
+  color: var(--error);
 }
 
 .help {
   font-size: 12px;
+  line-height: 1.45;
   color: var(--muted);
-  margin-top: var(--space-1);
+}
+
+.error {
+  color: var(--error);
 }
 
 .input,
