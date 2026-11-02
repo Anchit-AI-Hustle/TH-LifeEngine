@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { CalendarX2, Download, LoaderCircle, Plus, Printer } from "lucide-react";
+import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PlanReader } from "@/components/lifeengine/plan-view/PlanReader";
+import { ExportStatusLine, PlanExportPanel, usePdfExport } from "@/components/lifeengine/plan-view/PlanExport";
+import { PlanPrintStyles, PrintPages } from "@/components/lifeengine/plan-view/PlanPrint";
+import { PlanError, PlanSkeleton, primaryLinkClass, secondaryLinkClass } from "@/components/lifeengine/plan-view/PlanStates";
+import { formatDate, parseLocalDate } from "@/components/lifeengine/plan-view/model";
+import { safeFileName } from "@/components/lifeengine/plan-view/exportPdf";
+import type { ViewMode } from "@/components/lifeengine/plan-view/PlanDayView";
 
 interface DayPage {
   dayNumber: number;
@@ -32,299 +41,309 @@ interface PlanData {
   createdAt: string;
 }
 
-export default function CustomGPTPlanPage({ params }: { params: { id: string } }) {
-  const router = useRouter();
+const EXPORT_PANEL_ID = "custom-gpt-export";
+
+// ---------- plain-text plan formatting ----------
+
+type Block =
+  | { type: "heading"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "bullets"; items: string[] }
+  | { type: "steps"; items: string[] };
+
+/** Turn the model's plain text (light Markdown) into headings, paragraphs and lists. */
+function parseContent(content: string): Block[] {
+  const blocks: Block[] = [];
+  const push = (type: "bullets" | "steps", item: string) => {
+    const last = blocks[blocks.length - 1];
+    if (last && last.type === type) last.items.push(item);
+    else blocks.push({ type, items: [item] });
+  };
+  for (const raw of (content || "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^[-*_=]{3,}$/.test(line)) continue;
+    let match: RegExpExecArray | null;
+    if ((match = /^#{1,6}\s+(.*)$/.exec(line))) blocks.push({ type: "heading", text: match[1].replace(/\*\*/g, "") });
+    else if ((match = /^\*\*(.+?)\*\*:?$/.exec(line))) blocks.push({ type: "heading", text: match[1].replace(/:$/, "") });
+    else if ((match = /^[-*•●]\s+(.*)$/.exec(line))) push("bullets", match[1]);
+    else if ((match = /^\d+[.)]\s+(.*)$/.exec(line))) push("steps", match[1]);
+    else if (line.length <= 60 && /:$/.test(line) && !/[.!?]\s/.test(line)) blocks.push({ type: "heading", text: line.slice(0, -1) });
+    else blocks.push({ type: "paragraph", text: line });
+  }
+  return blocks;
+}
+
+/** **bold** inside a line. */
+function inline(text: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    /^\*\*[^*]+\*\*$/.test(part) ? (
+      <strong key={i} className="font-semibold text-gray-900">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      <Fragment key={i}>{part}</Fragment>
+    ),
+  );
+}
+
+function PlanText({ content, mode = "screen" }: { content: string; mode?: ViewMode }) {
+  const blocks = useMemo(() => parseContent(content), [content]);
+  const paper = mode === "paper";
+  const body = paper ? "text-black" : "text-gray-700";
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, i) => {
+        if (block.type === "heading") {
+          return (
+            <h3 key={i} className={clsx("pt-3 text-base font-semibold first:pt-0", paper ? "text-black" : "text-gray-900")}>
+              {block.text}
+            </h3>
+          );
+        }
+        if (block.type === "paragraph") {
+          return (
+            <p key={i} className={clsx("text-sm leading-6", body)}>
+              {inline(block.text)}
+            </p>
+          );
+        }
+        if (block.type === "bullets") {
+          return (
+            <ul key={i} className="space-y-1.5">
+              {block.items.map((item, j) => (
+                <li key={j} className={clsx("flex gap-2.5 text-sm leading-6", body)}>
+                  <span aria-hidden className={clsx("mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full", paper ? "bg-black" : "bg-gray-400")} />
+                  <span className="min-w-0 flex-1">{inline(item)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <ol key={i} className="space-y-2">
+            {block.items.map((item, j) => (
+              <li key={j} className={clsx("flex gap-3 text-sm", body)}>
+                {paper ? (
+                  <span aria-hidden className="w-5 shrink-0 text-right font-semibold tabular-nums">
+                    {j + 1}.
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold tabular-nums text-indigo-700"
+                  >
+                    {j + 1}
+                  </span>
+                )}
+                <span className={clsx("min-w-0 flex-1 leading-5", !paper && "pt-0.5")}>{inline(item)}</span>
+              </li>
+            ))}
+          </ol>
+        );
+      })}
+    </div>
+  );
+}
+
+/** "Day 2: Strength and balance" -> "Strength and balance" */
+const dayTopic = (page: DayPage) => page.title.replace(/^\s*day\s*\d+\s*[:\-–—]?\s*/i, "").trim();
+
+function DayContent({
+  page,
+  mode = "screen",
+  headingId,
+  actions,
+}: {
+  page: DayPage;
+  mode?: ViewMode;
+  headingId?: string;
+  actions?: ReactNode;
+}) {
+  const paper = mode === "paper";
+  const topic = dayTopic(page);
+  return (
+    <article className={clsx(paper ? "bg-white" : "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6")}>
+      <div className={clsx("flex items-start justify-between gap-3", paper ? "border-b-2 border-black pb-3" : "border-b border-gray-100 pb-4")}>
+        <div className="min-w-0">
+          <p className={clsx("text-sm font-medium", paper ? "text-gray-800" : "text-gray-500")}>Day {page.dayNumber}</p>
+          <h2 id={headingId} className={clsx("mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl", paper ? "text-black" : "text-gray-900")}>
+            {topic || page.title}
+          </h2>
+        </div>
+        {actions}
+      </div>
+      <div className="mt-5">
+        <PlanText content={page.content} mode={mode} />
+      </div>
+    </article>
+  );
+}
+
+export default function CustomGPTPlanPage() {
+  const params = useParams<{ id: string }>();
+  const planId = typeof params?.id === "string" ? params.id : null;
   const [planData, setPlanData] = useState<PlanData | null>(null);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
-  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
-  const contentRef = useRef<HTMLDivElement>(null);
-  const printRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [currentDay, setCurrentDay] = useState(0);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+
+  const loadPlan = useCallback(() => {
+    if (planId === null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Custom GPT plans are kept in this browser only.
+      const storedPlans = JSON.parse(localStorage.getItem("custom_gpt_plans") || "[]");
+      const plan = Array.isArray(storedPlans) ? storedPlans.find((p: PlanData) => p.id === planId) : null;
+      setPlanData(plan && Array.isArray(plan.plan?.pages) ? plan : null);
+    } catch (err) {
+      console.error("Failed to read saved Custom GPT plans:", err);
+      setError("The plans saved in this browser could not be read.");
+    } finally {
+      setLoading(false);
+    }
+  }, [planId]);
 
   useEffect(() => {
-    // Load plan from localStorage
-    const storedPlans = JSON.parse(localStorage.getItem("custom_gpt_plans") || "[]");
-    const plan = storedPlans.find((p: PlanData) => p.id === params.id);
+    loadPlan();
+  }, [loadPlan]);
 
-    if (plan) {
-      setPlanData(plan);
-      // Select all days by default
-      setSelectedDays(new Set(plan.plan.pages.map((_page: DayPage, idx: number) => idx)));
-    }
-    setLoading(false);
-  }, [params.id]);
+  const pages = planData?.plan.pages ?? [];
+  const items = useMemo(
+    () => pages.map((page) => ({ label: `Day ${page.dayNumber}`, sublabel: dayTopic(page) || undefined, short: "" })),
+    [pages],
+  );
 
-  const handleDownloadPDF = async (dayIndices?: number[]) => {
-    if (!planData || !printRef.current) return;
+  const name: string = planData?.formData?.fullName || "";
+  const title = name ? `Plan for ${name}` : "Your Custom GPT plan";
+  const created = parseLocalDate(planData?.createdAt);
+  const description = [
+    `${pages.length} ${pages.length === 1 ? "day" : "days"}`,
+    created ? `Created ${formatDate(created, { day: "numeric", month: "short", year: "numeric" })}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-    setDownloading(true);
-    try {
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pagesToExport = dayIndices || Array.from(selectedDays);
-
-      for (let i = 0; i < pagesToExport.length; i++) {
-        const dayIndex = pagesToExport[i];
-        const pageEl = printRef.current.querySelector<HTMLDivElement>(
-          `[data-day-index="${dayIndex}"]`
-        );
-
-        if (!pageEl) continue;
-
-        const canvas = await html2canvas(pageEl, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-        });
-
-        const imgData = canvas.toDataURL("image/png");
-        const imgWidth = 210; // A4 width in mm
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
-      }
-
-      const fileName = `CustomGPT_Plan_${planData.formData.fullName}_${new Date().toLocaleDateString()}.pdf`;
-      pdf.save(fileName);
-    } catch (error) {
-      console.error("PDF generation failed:", error);
-      alert("Failed to generate PDF. Please try again.");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const toggleDaySelection = (index: number) => {
-    setSelectedDays((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading plan...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!planData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <span className="text-6xl mb-4 block">😕</span>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Plan Not Found</h2>
-          <p className="text-gray-600 mb-6">
-            The plan you're looking for doesn't exist or has been deleted.
+  const renderPaperDay = useCallback(
+    (index: number) =>
+      pages[index] && (
+        <>
+          <DayContent page={pages[index]} mode="paper" />
+          <p className="mt-8 border-t border-gray-300 pt-3 text-xs text-gray-700">
+            TH+ LifeEngine · {name || "Custom GPT plan"}
+            {created ? ` · ${formatDate(created, { day: "numeric", month: "short", year: "numeric" })}` : ""}
           </p>
-          <Link href="/custom-gpt/create">
-            <Button>Create New Plan</Button>
-          </Link>
-        </div>
-      </div>
+        </>
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pages, name, planData?.createdAt],
+  );
+
+  const pdf = usePdfExport({
+    fileName: `CustomGPT_Plan_${safeFileName(name || "plan")}_${new Date().toLocaleDateString("en-CA")}.pdf`,
+    renderPage: renderPaperDay,
+  });
+
+  const newPlanLink = (
+    <Link href="/custom-gpt/create" className={secondaryLinkClass}>
+      <Plus aria-hidden />
+      New plan
+    </Link>
+  );
+
+  if (loading) return <PlanSkeleton />;
+
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Your Custom GPT plan" />
+        <PlanError message={error} onRetry={loadPlan}>
+          {newPlanLink}
+        </PlanError>
+      </>
     );
   }
 
-  const currentPage = planData.plan.pages[currentPageIndex];
-  const totalPages = planData.plan.pages.length;
+  if (!planData || !pages.length) {
+    return (
+      <>
+        <PageHeader title="Plan not found" description="Custom GPT plans are saved in the browser they were created in." />
+        <EmptyState
+          icon={CalendarX2}
+          title="We could not find this plan"
+          description="It may have been created in another browser, or the saved data was cleared."
+          action={
+            <Link href="/custom-gpt/create" className={primaryLinkClass}>
+              <Plus aria-hidden />
+              Create a new plan
+            </Link>
+          }
+        />
+      </>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <Link href="/custom-gpt/create">
-                <Button variant="ghost" className="text-gray-600">
-                  ← Back
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <span className="text-2xl">🤖</span>
-                  Custom GPT Plan: {planData.formData.fullName}
-                </h1>
-                <p className="text-sm text-gray-500">
-                  {totalPages} days · Generated with {planData.plan.metadata.model} ·{" "}
-                  {new Date(planData.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+    <>
+      <PlanPrintStyles />
+      <div className="print:hidden">
+        <PageHeader
+          title={title}
+          description={description}
+          actions={
+            <>
               <Button
-                onClick={() => handleDownloadPDF(Array.from(selectedDays).sort((a, b) => a - b))}
-                disabled={downloading || selectedDays.size === 0}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                ref={exportButtonRef}
+                type="button"
+                onClick={() => setExportOpen((open) => !open)}
+                aria-expanded={exportOpen}
+                aria-controls={EXPORT_PANEL_ID}
               >
-                {downloading ? "Exporting..." : `📥 Download Selected (${selectedDays.size})`}
+                {pdf.busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <Download aria-hidden />}
+                Export PDF
               </Button>
-              <Button
-                onClick={() =>
-                  handleDownloadPDF(planData.plan.pages.map((_, idx) => idx))
-                }
-                disabled={downloading}
-                variant="ghost"
-              >
-                Download All
+              <Button type="button" variant="ghost" onClick={() => window.print()}>
+                <Printer aria-hidden />
+                Print
               </Button>
-            </div>
+              {newPlanLink}
+            </>
+          }
+        />
+
+        {!exportOpen && pdf.status.kind !== "idle" && (
+          <div className="-mt-3 mb-6">
+            <ExportStatusLine status={pdf.status} />
           </div>
-        </div>
-      </header>
+        )}
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Day Index Sidebar */}
-          <aside className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sticky top-24">
-              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                <span>📋</span>
-                Day Index
-              </h3>
-              <div className="space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
-                {planData.plan.pages.map((page, idx) => (
-                  <div
-                    key={idx}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-all ${
-                      idx === currentPageIndex
-                        ? "bg-blue-600 text-white shadow-md"
-                        : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={() => setCurrentPageIndex(idx)}
-                        className="flex-1 text-left font-medium"
-                      >
-                        {page.title}
-                      </button>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedDays.has(idx)}
-                          onChange={() => toggleDaySelection(idx)}
-                          className="w-4 h-4"
-                          title={`Select ${page.title} for download`}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
+        {exportOpen && (
+          <PlanExportPanel
+            id={EXPORT_PANEL_ID}
+            items={items}
+            current={currentDay}
+            status={pdf.status}
+            onDownload={pdf.exportDays}
+            onClose={() => {
+              setExportOpen(false);
+              exportButtonRef.current?.focus();
+            }}
+          />
+        )}
 
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            {/* Navigation */}
-            <div className="flex items-center justify-between mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <Button
-                onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))}
-                disabled={currentPageIndex === 0}
-                variant="ghost"
-              >
-                ← Previous Day
-              </Button>
-              <span className="font-medium text-gray-700">
-                Day {currentPageIndex + 1} of {totalPages}
-              </span>
-              <Button
-                onClick={() =>
-                  setCurrentPageIndex(Math.min(totalPages - 1, currentPageIndex + 1))
-                }
-                disabled={currentPageIndex === totalPages - 1}
-                variant="ghost"
-              >
-                Next Day →
-              </Button>
-            </div>
-
-            {/* Page Content */}
-            <div
-              ref={contentRef}
-              className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-8 min-h-[600px]"
-            >
-              <div className="prose prose-lg max-w-none">
-                <h2 className="text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3">
-                  <span className="text-4xl">📘</span>
-                  {currentPage.title}
-                </h2>
-                <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                  {currentPage.content}
-                </div>
-              </div>
-            </div>
-
-            {/* Metadata */}
-            <div className="mt-6 bg-blue-50 rounded-xl border border-blue-200 p-4">
-              <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
-                <span>ℹ️</span>
-                Generation Details
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-blue-600 font-medium">Model</p>
-                  <p className="text-blue-900">{planData.plan.metadata.model}</p>
-                </div>
-                <div>
-                  <p className="text-blue-600 font-medium">Tokens Used</p>
-                  <p className="text-blue-900">
-                    {planData.plan.metadata.totalTokens.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-blue-600 font-medium">Est. Cost</p>
-                  <p className="text-blue-900">
-                    ${planData.plan.metadata.estimatedCost.toFixed(4)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-blue-600 font-medium">Generation Time</p>
-                  <p className="text-blue-900">
-                    {(planData.plan.metadata.duration / 1000).toFixed(1)}s
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PlanReader
+          items={items}
+          idPrefix="gpt"
+          onChange={setCurrentDay}
+          renderDay={(index, { headingId, stepper }) => <DayContent page={pages[index]} headingId={headingId} actions={stepper} />}
+        />
       </div>
 
-      {/* Hidden print container */}
-      <div className="hidden">
-        <div ref={printRef}>
-          {planData.plan.pages.map((page, idx) => (
-            <div
-              key={idx}
-              data-day-index={idx}
-              className="bg-white p-8 min-h-screen page-break-after"
-            >
-              <h2 className="text-3xl font-bold mb-6">{page.title}</h2>
-              <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {page.content}
-              </div>
-              <div className="mt-8 pt-4 border-t border-gray-200 text-sm text-gray-500">
-                <p>Generated by TH-LifeEngine Custom GPT</p>
-                <p>
-                  {planData.formData.fullName} ·{" "}
-                  {new Date(planData.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+      <PrintPages title={title} subtitle={description} count={pages.length} renderPage={renderPaperDay} />
+      {pdf.host}
+    </>
   );
 }

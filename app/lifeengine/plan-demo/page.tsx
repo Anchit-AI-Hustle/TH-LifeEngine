@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { BookOpen, CalendarDays, Download, ListChecks, Printer, Smartphone } from "lucide-react";
 import PlanNotebook, { PlanNotebookData } from "@/components/lifeengine/PlanNotebook";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
 
 // Sample data for demonstration
 const samplePlan: PlanNotebookData = {
@@ -161,10 +164,10 @@ Roast at 425°F for 20 minutes. Serve salmon over vegetables with a lemon wedge.
         },
       },
       tips: [
-        "💧 Drink at least 8 glasses of water throughout the day",
-        "😴 Aim for 7-8 hours of quality sleep tonight",
-        "🧘 Take 5 minutes for mindful breathing before bed",
-        "📝 Journal about your goals and intentions for this wellness journey",
+        "Drink at least 8 glasses of water throughout the day",
+        "Aim for 7-8 hours of quality sleep tonight",
+        "Take 5 minutes for mindful breathing before bed",
+        "Journal about your goals and intentions for this wellness journey",
       ],
       notes: "Welcome to Day 1! Focus on building consistency and listening to your body.",
     },
@@ -313,10 +316,10 @@ Add sauce made from soy sauce, rice vinegar, honey, and garlic. Serve over rice,
         },
       },
       tips: [
-        "🏃 Take a 10-minute walk after lunch to aid digestion",
-        "🎵 Create a motivating playlist for your workouts",
-        "📱 Limit screen time 1 hour before bed",
-        "🥤 Try adding lemon to your water for extra flavor and vitamin C",
+        "Take a 10-minute walk after lunch to aid digestion",
+        "Create a motivating playlist for your workouts",
+        "Limit screen time 1 hour before bed",
+        "Try adding lemon to your water for extra flavor and vitamin C",
       ],
       notes: "Day 2: Focus on form over speed. Quality movements matter more than quantity.",
     },
@@ -324,117 +327,109 @@ Add sauce made from soy sauce, rice vinegar, honey, and garlic. Serve over rice,
     {
       day: 3,
       tips: [
-        "💪 Rest day! Focus on gentle stretching and recovery",
-        "🛀 Consider taking a relaxing bath with Epsom salts",
-        "📖 Spend time reading or engaging in a hobby you enjoy",
-        "🥗 Meal prep for the upcoming days",
+        "Rest day! Focus on gentle stretching and recovery",
+        "Consider taking a relaxing bath with Epsom salts",
+        "Spend time reading or engaging in a hobby you enjoy",
+        "Meal prep for the upcoming days",
       ],
       notes: "Day 3: Active recovery. Listen to your body and give it the rest it needs.",
     },
     {
       day: 4,
       tips: [
-        "⚡ Increase intensity slightly from Day 1",
-        "💧 Monitor hydration - drink water consistently",
-        "🎯 Review your progress and adjust goals if needed",
-        "🧘 Practice gratitude meditation for 5 minutes",
+        "Increase intensity slightly from Day 1",
+        "Monitor hydration - drink water consistently",
+        "Review your progress and adjust goals if needed",
+        "Practice gratitude meditation for 5 minutes",
       ],
       notes: "Day 4: Building momentum. You're establishing healthy habits!",
     },
     {
       day: 5,
       tips: [
-        "🏋️ Challenge yourself with one more rep or longer holds",
-        "🥑 Focus on incorporating healthy fats into meals",
-        "😊 Share your progress with a friend or family member",
-        "📝 Write down three things you're grateful for today",
+        "Challenge yourself with one more rep or longer holds",
+        "Focus on incorporating healthy fats into meals",
+        "Share your progress with a friend or family member",
+        "Write down three things you're grateful for today",
       ],
       notes: "Day 5: Halfway point! Celebrate your consistency.",
     },
     {
       day: 6,
       tips: [
-        "🌅 Try a morning yoga session to energize your day",
-        "🎨 Get creative with your meals - try a new recipe",
-        "👫 Invite a friend to join you for a workout",
-        "🌙 Practice evening relaxation techniques",
+        "Try a morning yoga session to energize your day",
+        "Get creative with your meals - try a new recipe",
+        "Invite a friend to join you for a workout",
+        "Practice evening relaxation techniques",
       ],
       notes: "Day 6: Almost there! Keep pushing forward.",
     },
     {
       day: 7,
       tips: [
-        "🎉 Reflect on the week's achievements",
-        "📊 Assess what worked well and what to improve",
-        "🎯 Set goals for the upcoming week",
-        "💆 Treat yourself to something special - you earned it!",
-        "📸 Take progress photos or measurements",
+        "Reflect on the week's achievements",
+        "Assess what worked well and what to improve",
+        "Set goals for the upcoming week",
+        "Treat yourself to something special - you earned it!",
+        "Take progress photos or measurements",
       ],
       notes: "Day 7: Congratulations on completing your first week! This is just the beginning of your wellness journey.",
     },
   ],
 };
 
+const FEATURES = [
+  { icon: CalendarDays, title: "Day by day", body: "Pick a day from the list, or step through with the previous and next buttons or the arrow keys." },
+  { icon: ListChecks, title: "Clear instructions", body: "Yoga, training and meals in their own sections, with numbered steps, sets, reps and timings." },
+  { icon: BookOpen, title: "Recipes on demand", body: "Each meal shows calories and macros; open the recipe for ingredients and method." },
+  { icon: Download, title: "PDF export", body: "Download the whole plan, one day, or any days you choose. Each day starts on a new page." },
+  { icon: Printer, title: "Print friendly", body: "Printing hides the app and prints every day on its own page, black on white." },
+  { icon: Smartphone, title: "Works on any screen", body: "Swipe through days on a phone; on a laptop the day list stays beside the plan." },
+];
+
 export default function PlanDemoPage() {
   const [showDemo, setShowDemo] = useState(false);
 
-  if (!showDemo) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-8">
-        <div className="max-w-2xl bg-white rounded-2xl shadow-xl p-12 text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            📔 Plan Notebook Demo
-          </h1>
-          <p className="text-lg text-gray-600 mb-8">
-            Experience the new notebook-style plan viewer! Each day is displayed as a beautiful,
-            full-width page with yoga routines, exercises, meal plans, and tips.
-          </p>
-          
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mb-8 text-left">
-            <h2 className="text-xl font-bold text-blue-900 mb-3">✨ Features:</h2>
-            <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">📄</span>
-                <span>Page-by-page day navigation with Previous/Next buttons</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">🗂️</span>
-                <span>Day index sidebar for quick navigation</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">📥</span>
-                <span>Export full plan or selected days to PDF</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">🎨</span>
-                <span>Beautiful color-coded sections for yoga, exercise, meals, and tips</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">📱</span>
-                <span>Fully responsive design for mobile, tablet, and desktop</span>
-              </li>
-            </ul>
-          </div>
-
-          <button
-            onClick={() => setShowDemo(true)}
-            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white text-lg font-semibold rounded-xl hover:shadow-lg transform hover:scale-105 transition-all"
-          >
-            View Sample Plan 🚀
-          </button>
-
-          <p className="text-sm text-gray-500 mt-6">
-            This is a demo showcasing the notebook-style plan viewer with sample data
-          </p>
-        </div>
-      </div>
-    );
+  if (showDemo) {
+    return <PlanNotebook data={samplePlan} onClose={() => setShowDemo(false)} />;
   }
 
   return (
-    <PlanNotebook
-      data={samplePlan}
-      onClose={() => setShowDemo(false)}
-    />
+    <div className="mx-auto max-w-4xl">
+      <PageHeader
+        eyebrow="Sample"
+        title="Plan viewer"
+        description="See how a plan reads before you create your own. This sample is a 7-day yoga, diet and fitness plan."
+        actions={
+          <Button type="button" onClick={() => setShowDemo(true)}>
+            <BookOpen aria-hidden />
+            View sample plan
+          </Button>
+        }
+      />
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="demo-features">
+        <h2 id="demo-features" className="text-base font-semibold text-gray-900">
+          What you get
+        </h2>
+        <ul className="mt-5 grid gap-5 sm:grid-cols-2">
+          {FEATURES.map(({ icon: Icon, title, body }) => (
+            <li key={title} className="flex gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <Icon className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+                <p className="mt-0.5 text-sm text-gray-600">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-6 border-t border-gray-100 pt-5">
+          <Button type="button" onClick={() => setShowDemo(true)}>
+            View sample plan
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
