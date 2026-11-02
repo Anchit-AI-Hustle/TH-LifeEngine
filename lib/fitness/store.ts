@@ -7,6 +7,7 @@
  */
 
 import type { DailyLog, FitnessPlan, FitnessProfile } from "./types";
+import { markChanged } from "@/lib/sync/client";
 
 const PROFILES_KEY = "th_fitness_profiles";
 const PLANS_KEY = "th_fitness_plans";
@@ -34,6 +35,7 @@ function write<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    markChanged(key);
     emit(key);
   } catch (error) {
     console.error(`Failed to persist ${key}:`, error);

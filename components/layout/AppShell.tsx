@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import Sidebar, { BrandMark } from "./Sidebar";
+import { hydrate } from "@/lib/sync/client";
 
 /**
  * The one app frame for every signed-in page.
@@ -12,6 +13,26 @@ import Sidebar, { BrandMark } from "./Sidebar";
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  // Pages read habits, sleep and fitness data from browser storage on mount,
+  // so the account's copy is pulled in first (never longer than 4 seconds).
+  const [synced, setSynced] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const done = () => live && setSynced(true);
+    const cap = setTimeout(done, 4000);
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { owner?: string } | null) => hydrate(d?.owner ?? null))
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(cap);
+        done();
+      });
+    return () => {
+      live = false;
+      clearTimeout(cap);
+    };
+  }, []);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDivElement>(null);
   // Set by close(); the cleanup below moves focus back once the top bar is no longer inert.
@@ -143,7 +164,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* The portfolio launchers are docked in the top bar / sidebar (globals.css). */}
       <main id="main" className="lg:pl-[264px]">
-        <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">
+          {synced ? (
+            children
+          ) : (
+            <div className="space-y-4" role="status" aria-label="Loading your data">
+              <div className="h-8 w-48 animate-pulse rounded-lg bg-gray-200" />
+              <div className="h-4 w-80 max-w-full animate-pulse rounded bg-gray-200" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-32 animate-pulse rounded-2xl bg-gray-100" />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
