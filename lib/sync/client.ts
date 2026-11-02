@@ -39,11 +39,13 @@ function readRaw(key: string): unknown {
   }
 }
 
-async function push(key: string, value: unknown, updatedAt: number): Promise<void> {
+/** Send several keys in one request; the server saves them in one write. */
+async function pushBatch(docs: Record<string, { value: unknown; updatedAt: number }>, keepalive = false): Promise<void> {
   const res = await fetch('/api/me/data', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key, value, updatedAt }),
+    body: JSON.stringify({ docs }),
+    keepalive,
   });
   if (!res.ok && res.status !== 409) throw new Error(`sync ${res.status}`);
 }
@@ -69,7 +71,7 @@ export async function hydrate(accountId: string | null): Promise<void> {
     return;
   }
 
-  const uploads: Promise<void>[] = [];
+  const uploads: Record<string, { value: unknown; updatedAt: number }> = {};
   for (const key of SYNCED_KEYS) {
     const remote = docs[key];
     const local = readRaw(key);
@@ -85,40 +87,82 @@ export async function hydrate(accountId: string | null): Promise<void> {
     } else if (local !== undefined && (!remote || localStamp > remote.updatedAt)) {
       const stamp = localStamp || Date.now();
       meta.stamps[key] = stamp;
-      uploads.push(push(key, local, stamp).catch(() => {}));
+      uploads[key] = { value: local, updatedAt: stamp };
     }
   }
   writeMeta(meta);
-  await Promise.all(uploads);
+  if (Object.keys(uploads).length) await pushBatch(uploads).catch(() => {});
   window.dispatchEvent(new Event(SYNCED_EVENT));
 }
 
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+// Changed keys wait here and go to the account together, one request at a
+// time. Separate requests per key raced on the server and lost all but one.
+const pending = new Set<string>();
+let timer: ReturnType<typeof setTimeout> | null = null;
+let inFlight: Promise<void> | null = null;
+
+async function sendPending(): Promise<void> {
+  while (inFlight) await inFlight.catch(() => {});
+  if (!pending.size) return;
+  const keys = [...pending];
+  pending.clear();
+  const meta = readMeta();
+  const docs: Record<string, { value: unknown; updatedAt: number }> = {};
+  for (const key of keys) docs[key] = { value: readRaw(key) ?? null, updatedAt: meta.stamps[key] ?? Date.now() };
+  inFlight = pushBatch(docs)
+    .catch(() => {
+      // Offline or a server error: send these again with the next change.
+      for (const key of keys) pending.add(key);
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  await inFlight;
+}
+
+function schedule(delay: number) {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    timer = null;
+    void sendPending();
+  }, delay);
+}
+
+let unloadHooked = false;
+/** Closing the tab inside the wait would drop the change: send it on the way out. */
+function hookUnload() {
+  if (unloadHooked) return;
+  unloadHooked = true;
+  window.addEventListener('pagehide', () => {
+    if (!pending.size || inFlight) return;
+    const meta = readMeta();
+    const docs: Record<string, { value: unknown; updatedAt: number }> = {};
+    for (const key of pending) docs[key] = { value: readRaw(key) ?? null, updatedAt: meta.stamps[key] ?? Date.now() };
+    // keepalive bodies are capped at 64 KB; bigger ones go on the next visit's hydrate.
+    if (JSON.stringify(docs).length < 60_000) {
+      pending.clear();
+      void pushBatch(docs, true).catch(() => {});
+    }
+  });
+}
 
 /** Call after writing a synced key to localStorage. */
 export function markChanged(key: string): void {
   if (typeof window === 'undefined' || !isSyncedKey(key)) return;
+  hookUnload();
   const meta = readMeta();
-  const stamp = Date.now();
-  meta.stamps[key] = stamp;
+  meta.stamps[key] = Date.now();
   writeMeta(meta);
-  clearTimeout(timers.get(key));
-  timers.set(
-    key,
-    setTimeout(() => {
-      timers.delete(key);
-      void push(key, readRaw(key) ?? null, readMeta().stamps[key] ?? stamp).catch(() => {});
-    }, 800),
-  );
+  pending.add(key);
+  schedule(800);
 }
 
-/** Send any change still waiting on its debounce timer. */
+/** Send any change still waiting, and wait for it to reach the account. */
 export async function flushPending(): Promise<void> {
-  const keys = [...timers.keys()];
-  for (const key of keys) clearTimeout(timers.get(key));
-  timers.clear();
-  const meta = readMeta();
-  await Promise.all(keys.map((key) => push(key, readRaw(key) ?? null, meta.stamps[key] ?? Date.now()).catch(() => {})));
+  if (timer) clearTimeout(timer);
+  timer = null;
+  await sendPending();
+  if (inFlight) await inFlight.catch(() => {});
 }
 
 /** Remove every synced key from this device (the account keeps its copy). */

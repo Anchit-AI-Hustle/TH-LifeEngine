@@ -3,6 +3,7 @@ export const SYNCED_KEYS = [
   'lifeengine.habits.v1',
   'lifeengine.sleep.v1',
   'lifeengine.planprogress.v1',
+  'lifeengine.diet.v1',
   'th_fitness_profiles',
   'th_fitness_plans',
   'th_fitness_logs',

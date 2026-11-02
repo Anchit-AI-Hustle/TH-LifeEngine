@@ -38,8 +38,6 @@ async function fetchWithTimeout(
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      // Keep connection alive for background requests
-      keepalive: true,
     });
     clearTimeout(timeoutId);
     return response;
@@ -90,53 +88,100 @@ async function withRetry<T>(
   throw lastError;
 }
 
+/** Ids of the plans saved for this person, or null if they cannot be read. */
+async function savedPlanIds(profileId: string): Promise<Map<string, string> | null> {
+  try {
+    const res = await fetch(`/api/lifeengine/listPlans?profileId=${encodeURIComponent(profileId)}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { plans?: { id: string; source?: string; createdAt?: string }[] };
+    return new Map((data.plans ?? []).map((p) => [p.id, `${p.source ?? ""}|${p.createdAt ?? ""}`]));
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Generates a plan using the regular rule-based API
+ * A gateway or the network can drop a long request while the server carries
+ * on and saves the plan. Wait for a plan that was not there before, rather
+ * than generating (and saving) the same plan again.
  */
-export async function generatePlan(payload: any): Promise<PlanGenerationResponse> {
-  return withRetry(async () => {
-    try {
-      console.log('📡 [API] Starting plan generation request...');
-      console.log('📡 [API] Payload:', JSON.stringify(payload, null, 2).substring(0, 500));
-      
-      const startTime = Date.now();
-      const response = await fetchWithTimeout("/api/lifeengine/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      }, 180000); // 3 minute timeout for plan generation (increased from 90s)
-      
-      const duration = Date.now() - startTime;
-      console.log(`⏱️ [API] Request completed in ${duration}ms`);
+async function waitForNewPlan(
+  profileId: string,
+  source: string | null,
+  before: Map<string, string>,
+  waitMs: number,
+): Promise<PlanGenerationResponse | null> {
+  const until = Date.now() + waitMs;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const now = await savedPlanIds(profileId);
+    if (!now) continue;
+    for (const [id, meta] of now) {
+      if (before.has(id)) continue;
+      const [planSource, createdAt] = meta.split("|");
+      if (source && planSource && planSource !== source) continue;
+      return { planId: id, profileId, createdAt: createdAt || new Date().toISOString(), plan: null };
+    }
+  }
+  return null;
+}
 
-      if (!response.ok) {
-        console.error('❌ [API] Request failed with status:', response.status);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ [API] Error data:', errorData);
-        throw {
-          message: errorData.error || errorData.message || "Plan generation failed",
-          details: errorData.details || response.statusText,
-          statusCode: response.status,
-        } as ApiError;
-      }
+async function requestPlan(payload: any): Promise<PlanGenerationResponse> {
+  try {
+    const response = await fetchWithTimeout("/api/lifeengine/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }, 180000);
 
-      const result = await response.json();
-      console.log('✅ [API] Plan generated successfully:', result.planId);
-      return result;
-    } catch (error: any) {
-      console.error('❌ [API] Exception during generation:', error);
-      if (error.message && error.statusCode) {
-        throw error; // Already formatted
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
       throw {
-        message: "Network error occurred",
-        details: error.message || "Could not connect to server",
-        statusCode: 0,
+        message: errorData.error || errorData.message || "Plan generation failed",
+        details: errorData.details || response.statusText,
+        statusCode: response.status,
       } as ApiError;
     }
-  });
+    return await response.json();
+  } catch (error: any) {
+    if (error.message && error.statusCode) throw error; // already formatted
+    throw {
+      message: "Network error occurred",
+      details: error.message || "Could not connect to server",
+      statusCode: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Generates and saves a plan. Retries server and network failures, but first
+ * checks whether the failed attempt saved a plan anyway, so a dropped
+ * response never leaves the person with duplicate plans.
+ */
+export async function generatePlan(payload: any): Promise<PlanGenerationResponse> {
+  const profileId: string | undefined = payload?.profileId;
+  const source = payload?.appVersion === "oss" ? "rule-engine" : payload?.appVersion === "current" ? "gemini" : null;
+  const before = profileId ? await savedPlanIds(profileId) : null;
+  const maxRetries = 2;
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestPlan(payload);
+    } catch (error: any) {
+      lastError = error;
+      const status = Number(error?.statusCode) || 0;
+      if (status >= 400 && status < 500 && status !== 408) throw error; // the request itself is wrong
+      // Dropped on the way back (network, timeout, gateway): the server may still save it.
+      const maybeSaved = status === 0 || status === 408 || status === 502 || status === 504;
+      if (maybeSaved && profileId && before) {
+        const saved = await waitForNewPlan(profileId, source, before, 75000);
+        if (saved) return saved;
+      }
+      if (attempt === maxRetries) throw error;
+      await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
 }
 
 /**

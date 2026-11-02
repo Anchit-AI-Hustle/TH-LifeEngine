@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Logger } from '@/lib/logging/logger';
 import { db } from '@/lib/utils/db';
 import { currentUserId } from '@/lib/auth';
+import { GEMINI_LIGHT_MODEL, geminiApiKey, isModelUnavailableError } from '@/lib/ai/gemini';
 import type { ProfileRow } from '@/lib/utils/db';
 
 const logger = new Logger('system');
@@ -88,6 +89,10 @@ type GenerationMode = 'full' | 'compact';
 const SHORT_PLAN_FAST_LANE_DAYS = 5;
 const STANDARD_PLAN_MODEL = process.env.GEMINI_STANDARD_MODEL || 'gemini-2.5-pro';
 const SHORT_PLAN_FAST_LANE_MODEL = process.env.GEMINI_FAST_MODEL || STANDARD_PLAN_MODEL;
+// Used when the chosen model is refused for quota or is not served to this key
+// (free-tier keys get no gemini-2.5-pro quota at all), so the plan still comes
+// from the AI instead of failing in a second.
+const QUOTA_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || GEMINI_LIGHT_MODEL;
 const DEFAULT_BASE_TIMEOUT_MS = 90000;
 const PER_DAY_TIMEOUT_MS = 15000;
 const MAX_TIMEOUT_MS = 300000;
@@ -228,6 +233,8 @@ export async function POST(req: NextRequest) {
     let selectedModelName = STANDARD_PLAN_MODEL;
     let isShortPlanFastLane = false;
     let model: ReturnType<GoogleGenerativeAI['getGenerativeModel']> | null = null;
+    let genAIClient: GoogleGenerativeAI | null = null;
+    let modelConfig: { temperature: number; topP: number; topK: number; maxOutputTokens: number } | null = null;
 
     let result: any = null;
     let usedMode: GenerationMode = 'full';
@@ -237,12 +244,13 @@ export async function POST(req: NextRequest) {
     let timeoutFallbackData: Awaited<ReturnType<typeof generatePlanWithOssModel>> | null = null;
 
     if (appVersion === 'current') {
-      if (!process.env.GOOGLE_API_KEY) {
+      const apiKey = geminiApiKey();
+      if (!apiKey) {
         logger.error('GOOGLE_API_KEY not configured');
         return NextResponse.json({ error: 'GOOGLE_API_KEY not configured' }, { status: 500 });
       }
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+      const genAI = new GoogleGenerativeAI(apiKey);
       const daysCount = Math.max(1, normalizeDurationToDays(input.duration));
       const fastLaneEligible = SHORT_PLAN_FAST_LANE_MODEL !== STANDARD_PLAN_MODEL && daysCount <= SHORT_PLAN_FAST_LANE_DAYS;
       isShortPlanFastLane = fastLaneEligible;
@@ -269,15 +277,14 @@ export async function POST(req: NextRequest) {
         });
       }
       
-      model = genAI.getGenerativeModel({ 
-        model: selectedModelName,
-        generationConfig: {
-          temperature: selectedTemperature,
-          topP: selectedTopP,
-          topK: selectedTopK,
-          maxOutputTokens: selectedMaxTokens,
-        },
-      });
+      genAIClient = genAI;
+      modelConfig = {
+        temperature: selectedTemperature,
+        topP: selectedTopP,
+        topK: selectedTopK,
+        maxOutputTokens: selectedMaxTokens,
+      };
+      model = genAI.getGenerativeModel({ model: selectedModelName, generationConfig: modelConfig });
     } else {
       console.log('⏱️ [STAGE 2/5: preparation] OSS mode selected - skipping Gemini preparation.');
     }
@@ -297,7 +304,7 @@ export async function POST(req: NextRequest) {
       if (!model) {
         throw new Error('Gemini model not initialized');
       }
-      const geminiModel = model;
+      let geminiModel = model;
       // TH-LifeEngine v2.0 System Prompt - Comprehensive Wellness Coach
       const BASE_SYSTEM_PROMPT = `# 🧠 TH‑LifeEngine — Complete Plan Generation System (v2.0)
 
@@ -581,13 +588,14 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks. Be thorough and deta
       const attemptModes: GenerationMode[] = defaultMode === 'compact' ? ['compact'] : ['full', 'compact'];
       usedMode = defaultMode;
       
-      for (const mode of attemptModes) {
+      for (let modeIndex = 0; modeIndex < attemptModes.length; modeIndex++) {
+        const mode = attemptModes[modeIndex];
         const systemPrompt = buildSystemPrompt(mode, daysCount);
         const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
         const estimatedInputTokens = Math.ceil(fullPrompt.length / 4);
         
         logger.debug('Sending v2.0 detailed prompt to Gemini', { 
-          model: 'gemini-2.5-pro',
+          model: selectedModelName,
           promptLength: fullPrompt.length,
           estimatedInputTokens,
           version: 'TH-LifeEngine v2.0',
@@ -641,6 +649,14 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks. Be thorough and deta
             continue;
           }
           
+          if (isModelUnavailableError(error) && genAIClient && modelConfig && selectedModelName !== QUOTA_FALLBACK_MODEL) {
+            console.warn(`⚠️ [GENERATE] ${selectedModelName} unavailable (${String(error?.message || '').slice(0, 160)}). Retrying with ${QUOTA_FALLBACK_MODEL}...`);
+            selectedModelName = QUOTA_FALLBACK_MODEL;
+            geminiModel = genAIClient.getGenerativeModel({ model: QUOTA_FALLBACK_MODEL, generationConfig: modelConfig });
+            modeIndex--; // same mode, other model
+            continue;
+          }
+
           if (isRetryableGeminiError(error) && mode !== 'compact') {
             console.warn(`⚠️ [GENERATE] Gemini error detected (${error.message}). Retrying with compact mode...`);
             runtimeWarnings.push("Gemini temporarily unavailable; switched to compact mode automatically.");

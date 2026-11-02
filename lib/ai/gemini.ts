@@ -11,3 +11,21 @@ export function geminiApiKey(): string | null {
   const key = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
   return key && key.trim() ? key.trim() : null;
 }
+
+/**
+ * True when Google refuses the model itself for this key: no quota left (429,
+ * "quota", "resource has been exhausted"; free-tier keys get none for the Pro
+ * models) or the model is not served (404 / "model ... not found"). Retrying
+ * the same model will not help; another model might.
+ */
+export function isModelUnavailableError(error: unknown): boolean {
+  if (!error) return false;
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    message.includes('429') ||
+    message.includes('quota') ||
+    message.includes('resource has been exhausted') ||
+    message.includes('404') ||
+    (message.includes('model') && message.includes('not found'))
+  );
+}
