@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { isAuthenticated } from '@/lib/auth';
+import { GEMINI_LIGHT_MODEL, geminiApiKey } from "@/lib/ai/gemini";
 
 type RequestPayload = {
   prompt: string;
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     }
 
     const openAiKey = process.env.OPENAI_API_KEY;
-    const googleKey = process.env.GOOGLE_API_KEY;
+    const googleKey = geminiApiKey();
 
     if (!openAiKey && !googleKey) {
       return NextResponse.json(
@@ -203,7 +204,7 @@ async function generateWithGemini({
   apiKey: string;
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = modelOverride || process.env.GEMINI_MODEL || "gemini-1.5-flash-8b";
+  const model = modelOverride || GEMINI_LIGHT_MODEL;
   const geminiModel = genAI.getGenerativeModel({ model });
 
   // ULTRA COST OPTIMIZATION for hobby project

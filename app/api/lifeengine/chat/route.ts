@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
+import { GEMINI_LIGHT_MODEL, geminiApiKey } from "@/lib/ai/gemini";
 
 // Initialize Gemini AI conditionally
 let genAI: GoogleGenerativeAI | null = null;
-const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+const apiKey = geminiApiKey();
 if (apiKey) {
   genAI = new GoogleGenerativeAI(apiKey);
 }
@@ -133,9 +134,8 @@ ${conversationHistory && conversationHistory.length > 0 ?
 
 Respond as a helpful wellness coach who knows their profile and goals.`;
 
-    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-8b"; // Cost optimized
-    const model = genAI.getGenerativeModel({ 
-      model: modelName,
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_LIGHT_MODEL,
       generationConfig: {
         maxOutputTokens: 2048, // Reduced for cost optimization
         temperature: 0.8,

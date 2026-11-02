@@ -76,7 +76,7 @@
 }
 
 .button.sm {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 var(--space-3);
   font-size: 13px;
   border-radius: 8px;
@@ -85,4 +85,12 @@
 .button.sm svg {
   width: 14px;
   height: 14px;
+}
+
+/* Touch screens: every button is at least a 40px target. */
+@media (pointer: coarse) {
+  .button,
+  .button.sm {
+    min-height: 40px;
+  }
 }

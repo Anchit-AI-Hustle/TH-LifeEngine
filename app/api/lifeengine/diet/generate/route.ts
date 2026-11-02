@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-
-// Initialize Gemini AI conditionally
-let genAI: GoogleGenerativeAI | null = null;
-if (process.env.GOOGLE_AI_API_KEY) {
-  genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
-}
+import { db } from "@/lib/utils/db";
+import { GEMINI_LIGHT_MODEL, geminiApiKey } from "@/lib/ai/gemini";
 
 const dietRequestSchema = z.object({
   profileId: z.string().min(1, "Profile ID is required"),
@@ -26,7 +22,8 @@ let dietPlans: any[] = [];
 
 export async function POST(request: NextRequest) {
   try {
-    if (!genAI) {
+    const apiKey = geminiApiKey();
+    if (!apiKey) {
       return NextResponse.json(
         { error: "AI service not configured" },
         { status: 503 }
@@ -36,15 +33,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { profileId, preferences } = dietRequestSchema.parse(body);
 
-    // Get profile data (in a real app, this would come from database)
+    // The signed-in account's own profile (db is scoped to the session).
+    const row = await db.getProfile(profileId);
+    if (!row) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+    const goals = (row.goals?.length ? row.goals : [row.lifestyle?.primaryGoal, ...(row.lifestyle?.secondaryGoals ?? [])])
+      .filter((g): g is string => typeof g === "string" && g.length > 0);
     const profile = {
-      id: profileId,
-      name: "User",
-      age: 30,
-      gender: "other",
-      goals: ["weight loss", "fitness"],
-      healthConcerns: "none",
-      experience: "intermediate",
+      id: row.id,
+      name: row.name ?? "User",
+      age: row.age ?? row.demographics?.age ?? 30,
+      gender: row.gender ?? row.demographics?.sex ?? "other",
+      goals: goals.length ? goals : ["general wellness"],
+      healthConcerns: row.healthConcerns || row.health?.notes || "none",
+      experience: row.experience ?? row.preferences?.level ?? "beginner",
     };
 
     // Build diet generation prompt
@@ -91,9 +94,8 @@ Format the response as a JSON object with this exact structure:
 
 Ensure the plan is realistic, nutritionally balanced, and considers all restrictions and preferences.`;
 
-    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-8b"; // Cost optimized
-    const model = genAI.getGenerativeModel({ 
-      model: modelName,
+    const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
+      model: GEMINI_LIGHT_MODEL,
       generationConfig: {
         maxOutputTokens: 3072, // Reduced for cost optimization
         temperature: 0.7,

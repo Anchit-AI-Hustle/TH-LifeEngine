@@ -1,17 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GOOGLE_API_KEY } from '../utils/env';
+import { GEMINI_LIGHT_MODEL, geminiApiKey } from './gemini';
 import { PLANNER_PROMPT } from './prompts';
 import type { Intake, Plan, Profile } from './schemas';
 
 export async function generatePlan(profile: Profile, intake: Intake): Promise<Plan> {
-  if (!GOOGLE_API_KEY) {
+  const apiKey = geminiApiKey();
+  if (!apiKey) {
     throw new Error('GOOGLE_API_KEY is not configured');
   }
 
-  const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash-8b'; // Cost optimized
-  const model = genAI.getGenerativeModel({ 
-    model: modelName,
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_LIGHT_MODEL,
     generationConfig: {
       maxOutputTokens: 4096, // Reduced for cost optimization
       temperature: 0.7,
