@@ -92,6 +92,39 @@ html, body {
 html.nav-open #anchit-app-skill-map-root,
 html.nav-open #anchit-project-playbooks-root { display: none !important; }
 
+/* The launchers float above everything, so on their own they cover page
+   text. Here they are always the compact icon form, docked where nothing
+   else lives: the right of the top bar on phones and tablets, a strip
+   reserved at the foot of the sidebar on desktop (see Sidebar.tsx). */
+.asm-launcher,
+.ppb-launcher {
+  min-width: 40px !important;
+  width: 40px !important;
+  min-height: 40px !important;
+  height: 40px !important;
+  padding: 2px !important;
+  grid-template-columns: 1fr !important;
+  justify-items: center !important;
+  border-radius: 12px !important;
+  top: 8px !important;
+  bottom: auto !important;
+  left: auto !important;
+}
+.asm-launcher { right: 12px !important; }
+.ppb-launcher { right: 60px !important; }
+.asm-launcher-copy,
+.asm-launcher-ring,
+.ppb-launcher-copy,
+.ppb-launcher-count { display: none !important; }
+.asm-launcher-icon,
+.ppb-launcher-icon { width: 34px !important; height: 34px !important; }
+@media (min-width: 1024px) {
+  .asm-launcher,
+  .ppb-launcher { top: auto !important; bottom: 16px !important; right: auto !important; }
+  .ppb-launcher { left: 20px !important; }
+  .asm-launcher { left: 68px !important; }
+}
+
 /* One visible focus style for keyboard users, everywhere. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

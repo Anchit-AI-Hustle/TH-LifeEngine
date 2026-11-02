@@ -141,9 +141,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Bottom padding keeps content clear of the floating portfolio launchers. */}
+      {/* The portfolio launchers are docked in the top bar / sidebar (globals.css). */}
       <main id="main" className="lg:pl-[264px]">
-        <div className="mx-auto w-full max-w-7xl px-4 pb-32 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">{children}</div>
       </main>
     </div>
   );
