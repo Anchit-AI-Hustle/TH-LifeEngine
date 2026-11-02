@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/utils/db";
+import { currentUserId } from "@/lib/auth";
 
 declare global {
   // Reuse the in-memory plan cache populated by the generation route when persistence fails
@@ -23,7 +24,8 @@ export async function GET(req: Request) {
     const planRow = await db.getPlan(parsedPlanId);
     if (!planRow) {
       const memoryPlan = MEMORY_PLAN_CACHE.get(parsedPlanId);
-      if (memoryPlan) {
+      const uid = await currentUserId();
+      if (memoryPlan && uid && memoryPlan.ownerId === uid) {
         return NextResponse.json({
           plan: memoryPlan.plan,
           planName: memoryPlan.planName,

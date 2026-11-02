@@ -104,7 +104,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public/ holds Next.js static assets (favicons) and must be committed.
 
 # Storybook build outputs
 .out
@@ -139,3 +139,5 @@ Thumbs.db
 
 # Turbo
 .turbo
+# Local account and plan data (development)
+.lifeengine-data/

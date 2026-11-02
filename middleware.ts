@@ -13,6 +13,8 @@ const PUBLIC_PATHS = [
   '/login',
   '/privacy',
   '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/logout',
   '/favicon.ico',
   '/favicon.svg',
   '/favicon.png',
@@ -32,6 +34,10 @@ export async function middleware(request: NextRequest) {
   // If not a public path, check authentication
   if (!isPublicPath) {
     if (!authenticated) {
+      // API callers get a status they can act on, not a login page.
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
+      }
       // Redirect to login page
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);

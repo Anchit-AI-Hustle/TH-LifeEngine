@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { LifeEnginePlan } from "@/app/types/lifeengine";
+import { currentUserId } from "@/lib/auth";
 
-type StoredPlanItem = { plan_id: string; plan: LifeEnginePlan };
+type StoredPlanItem = { plan_id: string; plan: LifeEnginePlan; ownerId?: string | null };
 
 // Access the global stores
 declare global {
@@ -23,6 +24,12 @@ export async function GET(req: Request) {
       );
     }
 
+    // Both stores are shared by every account on this server: only the caller's plans count.
+    const uid = await currentUserId();
+    if (!uid) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     // Check both storage systems
     const v1Store: StoredPlanItem[] = globalThis.__PLANS__ ?? [];
     const thPlansMap: Map<string, any> = globalThis.TH_PLANS ?? new Map();
@@ -32,7 +39,7 @@ export async function GET(req: Request) {
 
     // From v1 store (__PLANS__)
     const v1Matches = v1Store.filter(
-      (item) => item.plan?.metadata?.profile_id === profile_id
+      (item) => item.ownerId === uid && item.plan?.metadata?.profile_id === profile_id
     );
     allMatchingPlans.push(...v1Matches.map((item) => ({
       plan: item.plan,
@@ -42,7 +49,7 @@ export async function GET(req: Request) {
 
     // From TH_PLANS Map
     for (const [planId, planData] of thPlansMap.entries()) {
-      if (planData.profileId === profile_id) {
+      if (planData.ownerId === uid && planData.profileId === profile_id) {
         allMatchingPlans.push({
           plan: planData.plan,
           timestamp: new Date(planData.createdAt).getTime(),

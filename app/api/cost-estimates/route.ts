@@ -51,7 +51,7 @@ export async function GET() {
     recommendations,
     nextSteps: {
       immediate: "Choose Path A (new API key) or Path B (upgrade billing)",
-      testing: "Use /api/quota-test endpoint after upgrade",
+      testing: "Generate a plan after upgrading to confirm the new quota",
       monitoring: "Check costs weekly via Google Cloud Console"
     },
     usefulLinks: {

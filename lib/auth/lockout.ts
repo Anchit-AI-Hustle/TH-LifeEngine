@@ -16,6 +16,15 @@ export const MAX_TRIES = 5;
 export const LOCK_MINUTES = 15;
 export const LOCK_MS = LOCK_MINUTES * 60_000;
 
+// Each lock within a day lasts longer: 15 minutes, 1 hour, 4 hours, then a
+// day. A 4-digit PIN would otherwise fall to steady guessing in about ten
+// days (5 tries every 15 minutes); this stretches that to years.
+export const LOCK_STEPS_MS = [LOCK_MS, 60 * 60_000, 4 * 60 * 60_000, 24 * 60 * 60_000];
+export const STRIKE_WINDOW_MS = 24 * 60 * 60_000;
+export function lockDuration(strikes: number): number {
+  return LOCK_STEPS_MS[Math.min(Math.max(strikes, 1), LOCK_STEPS_MS.length) - 1];
+}
+
 export type Claim =
   | { ok: true; tries: number }
   | { ok: false; lockedUntil: number };
@@ -23,20 +32,20 @@ export type Claim =
 export interface LockoutStore {
   /** Count one try, unless locked. Atomic. */
   claim(_id: string): Promise<Claim>;
-  /** Lock for LOCK_MS (unless already locked) and clear the count. Returns when the lock ends. */
+  /** Lock (unless already locked), longer each time within a day, and clear the count. Returns when the lock ends. */
   lock(_id: string): Promise<number>;
   /** A right PIN: clear the count. */
   reset(_id: string): Promise<void>;
 }
 
 // ---- in-process ---------------------------------------------------------
-type Entry = { tries: number; lockedUntil: number };
+type Entry = { tries: number; lockedUntil: number; strikes: number; strikesUntil: number };
 
 export function memoryStore(now: () => number = Date.now): LockoutStore {
   const map = new Map<string, Entry>();
   const get = (id: string): Entry => {
     let e = map.get(id);
-    if (!e) { e = { tries: 0, lockedUntil: 0 }; map.set(id, e); }
+    if (!e) { e = { tries: 0, lockedUntil: 0, strikes: 0, strikesUntil: 0 }; map.set(id, e); }
     return e;
   };
   return {
@@ -48,12 +57,19 @@ export function memoryStore(now: () => number = Date.now): LockoutStore {
     },
     lock(id) {
       const e = get(id);
-      if (!(e.lockedUntil > now())) e.lockedUntil = now() + LOCK_MS;
+      if (!(e.lockedUntil > now())) {
+        e.strikes = e.strikesUntil > now() ? e.strikes + 1 : 1;
+        e.lockedUntil = now() + lockDuration(e.strikes);
+        // Strikes are remembered for a day after the lock ends, not after it starts.
+        e.strikesUntil = e.lockedUntil + STRIKE_WINDOW_MS;
+      }
       e.tries = 0;
       return Promise.resolve(e.lockedUntil);
     },
     reset(id) {
-      get(id).tries = 0;
+      const e = get(id);
+      e.tries = 0;
+      e.strikes = 0;
       return Promise.resolve();
     },
   };
@@ -65,14 +81,22 @@ local ttl = redis.call('PTTL', KEYS[2])
 if ttl > 0 then return {0, ttl} end
 return {redis.call('INCR', KEYS[1]), 0}`;
 const LOCK_LUA = `
-redis.call('SET', KEYS[2], '1', 'PX', ARGV[1], 'NX')
+local ttl = redis.call('PTTL', KEYS[2])
+if ttl > 0 then
+  redis.call('DEL', KEYS[1])
+  return ttl
+end
+local strikes = redis.call('INCR', KEYS[3])
+local ms = tonumber(ARGV[math.min(strikes, 4)])
+redis.call('PEXPIRE', KEYS[3], ms + tonumber(ARGV[5]))
+redis.call('SET', KEYS[2], '1', 'PX', ms)
 redis.call('DEL', KEYS[1])
-return redis.call('PTTL', KEYS[2])`;
+return ms`;
 
 type FetchLike = (_url: string, _init: { method: string; headers: Record<string, string>; body: string; cache: 'no-store' }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 export function upstashStore(url: string, token: string, fetchImpl: FetchLike = fetch, now: () => number = Date.now): LockoutStore {
-  const keys = (id: string) => [`pin:tries:${id}`, `pin:lock:${id}`];
+  const keys = (id: string) => [`pin:tries:${id}`, `pin:lock:${id}`, `pin:strikes:${id}`];
   async function cmd(args: (string | number)[]): Promise<unknown> {
     const res = await fetchImpl(url.replace(/\/+$/, ''), {
       method: 'POST',
@@ -95,12 +119,13 @@ export function upstashStore(url: string, token: string, fetchImpl: FetchLike = 
       return { ok: true, tries: n };
     },
     async lock(id) {
-      const [tries, lock] = keys(id);
-      const ttl = Number(await cmd(['EVAL', LOCK_LUA, 2, tries, lock, LOCK_MS]));
+      const [tries, lock, strikes] = keys(id);
+      const ttl = Number(await cmd(['EVAL', LOCK_LUA, 3, tries, lock, strikes, ...LOCK_STEPS_MS, STRIKE_WINDOW_MS]));
       return now() + (ttl > 0 ? ttl : LOCK_MS);
     },
     async reset(id) {
-      await cmd(['DEL', keys(id)[0]]);
+      const [tries, , strikes] = keys(id);
+      await cmd(['DEL', tries, strikes]);
     },
   };
 }
@@ -118,6 +143,10 @@ export function lockoutStore(): LockoutStore {
 // ---- words ----------------------------------------------------------------
 export function lockMessage(lockedUntil: number, now: number = Date.now()): string {
   const mins = Math.max(1, Math.ceil((lockedUntil - now) / 60_000));
+  if (mins >= 90) {
+    const hours = Math.round(mins / 60);
+    return `Too many wrong tries. Try again in ${hours} ${hours === 1 ? 'hour' : 'hours'}.`;
+  }
   return `Too many wrong tries. Try again in ${mins} ${mins === 1 ? 'minute' : 'minutes'}.`;
 }
 

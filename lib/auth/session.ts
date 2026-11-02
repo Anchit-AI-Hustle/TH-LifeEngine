@@ -1,18 +1,20 @@
 // The session cookie. Edge-safe (WebCrypto only), so the middleware and the
-// sign-in route share one implementation.
+// route handlers share one implementation.
 //
-// There is no session table in this app, so the cookie carries a random
-// token, a fixed expiry and an HMAC over both. The HMAC key is derived from
-// APP_PIN_HASH, which means:
-// - nobody without the server env var can mint a session; and
-// - changing the PIN signs out every device at once.
+// The cookie carries the account id, a fixed expiry, a random nonce and an
+// HMAC over all three, keyed from AUTH_SECRET:
+// - nobody without the server secret can mint or alter a session; and
+// - rotating AUTH_SECRET signs out every device at once.
 // The cookie is httpOnly, Secure (in production) and SameSite=Lax.
 export const SESSION_COOKIE = 'th-session';
-export const SESSION_DAYS = 7;
+export const SESSION_DAYS = 30;
 export const SESSION_MAX_AGE = SESSION_DAYS * 24 * 60 * 60; // seconds
 
-const VERSION = 'v2';
+// v3 adds the account id. Older single-owner (v2) cookies no longer verify,
+// so anyone signed in before accounts existed is asked to sign in again.
+const VERSION = 'v3';
 const enc = new TextEncoder();
+const UID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 function b64url(bytes: Uint8Array): string {
   let s = '';
@@ -31,40 +33,46 @@ function fromB64url(s: string): Uint8Array<ArrayBuffer> | null {
   }
 }
 
-async function keyFrom(pinHash: string): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest('SHA-256', enc.encode(`th-lifeengine-session-${VERSION}\n${pinHash}`));
+async function keyFrom(secret: string): Promise<CryptoKey> {
+  const material = await crypto.subtle.digest('SHA-256', enc.encode(`th-lifeengine-session-${VERSION}\n${secret}`));
   return crypto.subtle.importKey('raw', material, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 
-/** The server secret the session is bound to, or null when sign-in is not set up. */
-export function sessionSecret(): string | null {
-  const v = process.env.APP_PIN_HASH;
-  return v && v.trim() ? v.trim() : null;
+/**
+ * The server secret sessions and PIN hashes are bound to, or null when it is
+ * missing or too short, in which case sign-in stays closed.
+ */
+export function authSecret(): string | null {
+  const v = process.env.AUTH_SECRET?.trim();
+  return v && v.length >= 32 ? v : null;
 }
 
-export async function createSessionToken(secret: string, nowMs: number = Date.now()): Promise<string> {
+export async function createSessionToken(secret: string, uid: string, nowMs: number = Date.now()): Promise<string> {
+  if (!UID_RE.test(uid)) throw new Error('bad account id');
   const exp = Math.floor(nowMs / 1000) + SESSION_MAX_AGE;
-  const nonce = b64url(crypto.getRandomValues(new Uint8Array(32)));
-  const body = `${VERSION}.${exp}.${nonce}`;
+  const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)));
+  const body = `${VERSION}.${exp}.${uid}.${nonce}`;
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', await keyFrom(secret), enc.encode(body)));
   return `${body}.${b64url(sig)}`;
 }
 
-export async function verifySessionToken(
+/** The account id a valid, unexpired token belongs to, or null. */
+export async function readSessionToken(
   token: string | undefined | null,
   secret: string | null,
   nowMs: number = Date.now(),
-): Promise<boolean> {
-  if (!token || !secret || token.length > 200) return false;
+): Promise<string | null> {
+  if (!token || !secret || token.length > 512) return null;
   const parts = token.split('.');
-  if (parts.length !== 4 || parts[0] !== VERSION || !/^\d{1,12}$/.test(parts[1])) return false;
-  const exp = Number(parts[1]);
-  if (exp * 1000 <= nowMs) return false;
-  const sig = fromB64url(parts[3]);
+  if (parts.length !== 5 || parts[0] !== VERSION || !/^\d{1,12}$/.test(parts[1])) return null;
+  if (Number(parts[1]) * 1000 <= nowMs) return null;
+  if (!UID_RE.test(parts[2])) return null;
+  const sig = fromB64url(parts[4]);
   // Canonical encoding only, so one signature has exactly one spelling.
-  if (!sig || sig.length !== 32 || b64url(sig) !== parts[3]) return false;
+  if (!sig || sig.length !== 32 || b64url(sig) !== parts[4]) return null;
   // crypto.subtle.verify compares in constant time.
-  return crypto.subtle.verify('HMAC', await keyFrom(secret), sig, enc.encode(parts.slice(0, 3).join('.')));
+  const ok = await crypto.subtle.verify('HMAC', await keyFrom(secret), sig, enc.encode(parts.slice(0, 4).join('.')));
+  return ok ? parts[2] : null;
 }
 
 export function sessionCookieOptions() {
