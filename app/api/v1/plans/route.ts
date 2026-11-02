@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { LifeEnginePlan, PlanPostResponse } from "@/app/types/lifeengine";
+import { currentUserId } from "@/lib/auth";
 
 // Global in-memory store for plans (replace with DB in production)
 declare global {
-  var __PLANS__: { plan_id: string; plan: LifeEnginePlan }[] | undefined;
+  var __PLANS__: { plan_id: string; plan: LifeEnginePlan; ownerId?: string | null }[] | undefined;
 }
 
 const store =
@@ -51,8 +52,8 @@ export async function POST(req: Request) {
     const plan: LifeEnginePlan = body;
     const plan_id = generatePlanId();
 
-    // Store the plan
-    store.push({ plan_id, plan });
+    // Store the plan, tagged with its account: this store is shared by everyone on this server.
+    store.push({ plan_id, plan, ownerId: await currentUserId() });
 
     const response: PlanPostResponse = {
       ok: true,

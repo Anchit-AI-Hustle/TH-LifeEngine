@@ -1,15 +1,8 @@
-import { put, list, head, del } from "@vercel/blob";
-import { promises as fs } from 'fs';
-import path from 'path';
-import { hasVercelBlobStorage } from "./env";
 import type { Profile } from "@/lib/ai/schemas";
-
-const BLOB_KEY = "lifeengine.state.json";
-const LOCAL_STORAGE_PATH = process.env.LIFEENGINE_STATE_PATH
-  ? process.env.LIFEENGINE_STATE_PATH
-  : process.env.VERCEL
-    ? path.join('/tmp', 'lifeengine.state.json')
-    : path.join(process.cwd(), 'lifeengine.state.json');
+import { currentUserId } from "@/lib/auth";
+import { normalizeMobile } from "@/lib/auth/phone";
+import { isLegacyOwnerPin } from "@/lib/auth/legacy";
+import { readJson, writeJson } from "@/lib/storage/jsonStore";
 
 export type Sex = "F" | "M" | "Other";
 
@@ -135,182 +128,61 @@ type MemoryState = {
   plans: PlanRow[];
 };
 
-const defaultTimestamp = new Date().toISOString();
+// Every account has its own state document, so nobody sees anyone else's
+// profiles or plans. The account comes from the signed session cookie; the
+// data routes only run for signed-in requests (see middleware.ts).
+const stateKey = (uid: string) => `users/${uid}/lifeengine.state.json`;
 
-const defaultProfile: ProfileRow = {
-  id: "prof_anchit",
-  name: "Anchit",
-  demographics: {
-    age: 34,
-    sex: "M",
-    height: 178,
-    weight: 78,
-  },
-  contact: {
-    email: "anchit@timesgroup.com",
-    phone: "+91-90000-00000",
-    location: "Mumbai, IN",
-  },
-  lifestyle: {
-    occupation: "Senior Product Manager",
-    timeZone: "Asia/Kolkata",
-    activityLevel: "moderate",
-    primaryGoal: "PCOD-friendly lean gain",
-    secondaryGoals: ["stress_balance", "gut_health"],
-  },
-  health: {
-    flags: ["pcod"],
-    allergies: ["almonds"],
-    chronicConditions: ["thyroid"],
-    injuries: [],
-    medications: [],
-    notes: "Prefers low-impact flows during luteal phase.",
-  },
-  nutrition: {
-    dietType: "vegetarian",
-    cuisinePreference: "Indian home-cooked",
-    dislikes: ["raw onion"],
-    supplements: ["vitamin_d3"],
-    hydrationTargetMl: 2800,
-    fastingWindow: "14:10",
-  },
-  schedule: {
-    timeBudgetMin: 45,
-    daysPerWeek: 5,
-    preferredSlots: [{ start: "19:30", end: "21:00" }],
-    notes: "Avoid late-night sessions on Fridays.",
-  },
-  equipment: ["mat", "blocks"],
-  preferences: {
-    modules: ["yoga", "nutrition", "mindfulness", "sleep"],
-    tone: "balanced",
-    indoorOnly: true,
-    level: "intermediate",
-    coachingNotes: "Enjoys metrics and weekly progress summaries.",
-    focusAreas: ["pelvic_floor", "core_strength"],
-  },
-  coachingNotes: "Cycle-sensitive programming required; integrate hydration reminders.",
-  createdAt: defaultTimestamp,
-  updatedAt: defaultTimestamp,
-  ui: {
-    id: "prof_anchit",
-    name: "Anchit",
-    age: 34,
-    gender: "male",
-    goals: ["PCOD-friendly lean gain", "stress_balance", "gut_health"],
-    healthConcerns: "Prefers low-impact flows during luteal phase.",
-    experience: "intermediate",
-    preferredTime: "evening",
-    subscriptionType: "quarterly",
-    createdAt: defaultTimestamp,
-    updatedAt: defaultTimestamp,
-  },
-};
+// Before accounts, all data lived in this one shared document.
+const LEGACY_KEY = "lifeengine.state.json";
 
-function ensureAnchorProfile(state: MemoryState): MemoryState {
-  const existing = state.profiles.find((profile) => profile.id === defaultProfile.id);
-  const merged = {
-    ...defaultProfile,
-    ...(existing ?? {}),
-    demographics: { ...defaultProfile.demographics, ...(existing?.demographics ?? {}) },
-    contact: { ...defaultProfile.contact, ...(existing?.contact ?? {}) },
-    lifestyle: { ...defaultProfile.lifestyle, ...(existing?.lifestyle ?? {}) },
-    health: {
-      ...defaultProfile.health,
-      ...(existing?.health ?? {}),
-      flags: existing?.health?.flags ?? defaultProfile.health?.flags,
-      allergies: existing?.health?.allergies ?? defaultProfile.health?.allergies,
-      chronicConditions: existing?.health?.chronicConditions ?? defaultProfile.health?.chronicConditions,
-      injuries: existing?.health?.injuries ?? defaultProfile.health?.injuries,
-      medications: existing?.health?.medications ?? defaultProfile.health?.medications,
-    },
-    nutrition: { ...defaultProfile.nutrition, ...(existing?.nutrition ?? {}) },
-    schedule: { ...defaultProfile.schedule, ...(existing?.schedule ?? {}) },
-    equipment: existing?.equipment ?? defaultProfile.equipment,
-    preferences: {
-      ...defaultProfile.preferences,
-      ...(existing?.preferences ?? {}),
-      modules: existing?.preferences?.modules ?? defaultProfile.preferences?.modules,
-      focusAreas: existing?.preferences?.focusAreas ?? defaultProfile.preferences?.focusAreas,
-    },
-    coachingNotes: existing?.coachingNotes ?? defaultProfile.coachingNotes,
-    updatedAt: existing?.updatedAt ?? defaultProfile.updatedAt,
-    ui: existing?.ui ?? defaultProfile.ui,
-  } satisfies ProfileRow;
-  const others = state.profiles.filter((profile) => profile.id !== defaultProfile.id);
-  state.profiles = [merged, ...others];
-  return state;
+export class NotSignedInError extends Error {
+  constructor() {
+    super("Not signed in");
+  }
 }
 
-function defaultState(): MemoryState {
-  return ensureAnchorProfile({ profiles: [{ ...defaultProfile }], plans: [] });
+async function requireUser(): Promise<string> {
+  const uid = await currentUserId();
+  if (!uid) throw new NotSignedInError();
+  return uid;
 }
 
-let cachedState: MemoryState | null = null;
-let loadingPromise: Promise<MemoryState> | null = null;
+function emptyState(): MemoryState {
+  return { profiles: [], plans: [] };
+}
+
+function normalizeState(raw: Partial<MemoryState> | null): MemoryState {
+  return {
+    profiles: Array.isArray(raw?.profiles) ? raw.profiles : [],
+    plans: Array.isArray(raw?.plans) ? raw.plans : [],
+  };
+}
 
 async function readState(): Promise<MemoryState> {
-  if (!hasVercelBlobStorage) {
-    // This is a fallback for local development if blob storage is not configured.
-    // It is not a recommended production path.
-    console.warn("Vercel Blob Storage not configured. Using local file fallback.");
-    try {
-      const data = await fs.readFile(LOCAL_STORAGE_PATH, 'utf-8');
-      const parsed = JSON.parse(data) as MemoryState;
-      return ensureAnchorProfile(parsed);
-    } catch (error) {
-      console.warn("Error reading local state file, using default:", error);
-      const fresh = defaultState();
-      await writeState(fresh);
-      return fresh;
-    }
-  }
-  if (cachedState) return cachedState;
-  if (loadingPromise) return loadingPromise;
-
-  loadingPromise = (async () => {
-    try {
-      const blob = await head(BLOB_KEY);
-      if (!blob) {
-        const fresh = defaultState();
-        await writeState(fresh);
-        return fresh;
-      }
-      const response = await fetch(blob.url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch state from blob: ${response.statusText}`);
-      }
-      const parsed = (await response.json()) as MemoryState;
-      return ensureAnchorProfile(parsed);
-    } catch (error) {
-      console.error("Error reading from blob, returning default state:", error);
-      const fresh = defaultState();
-      await writeState(fresh);
-      return fresh;
-    }
-  })();
-
-  cachedState = await loadingPromise;
-  loadingPromise = null;
-  return cachedState;
+  const uid = await requireUser();
+  return normalizeState(await readJson<MemoryState>(stateKey(uid)));
 }
 
 async function writeState(state: MemoryState) {
-  ensureAnchorProfile(state);
-  if (hasVercelBlobStorage) {
-    await put(BLOB_KEY, JSON.stringify(state, null, 2), {
-      access: "public", // 'public' is required for the free tier.
-      addRandomSuffix: false,
-    });
-  } else {
-    // Fallback to local file for local development
-    try {
-      await fs.writeFile(LOCAL_STORAGE_PATH, JSON.stringify(state, null, 2), 'utf-8');
-    } catch (error) {
-      console.error("Error writing to local state file:", error);
-    }
-  }
-  cachedState = state;
+  const uid = await requireUser();
+  await writeJson(stateKey(uid), state);
+}
+
+/**
+ * Give the data saved before accounts existed to the owner's account, once:
+ * when the number matches LEGACY_OWNER_MOBILE, the PIN is the old owner PIN
+ * (APP_PIN_HASH), and the account has no data yet, copy the old shared
+ * document into it. The old document is left in place.
+ */
+export async function importLegacyData(uid: string, mobileE164: string, pin: string): Promise<boolean> {
+  const owner = normalizeMobile(process.env.LEGACY_OWNER_MOBILE ?? "");
+  if (!owner || owner !== mobileE164) return false;
+  if (await readJson<MemoryState>(stateKey(uid))) return false;
+  if (!(await isLegacyOwnerPin(pin))) return false;
+  const legacy = await readJson<MemoryState>(LEGACY_KEY);
+  await writeJson(stateKey(uid), legacy ? normalizeState(legacy) : emptyState());
+  return !!legacy;
 }
 
 export const db = {
@@ -352,9 +224,6 @@ export const db = {
     await writeState(state);
   },
   async deleteProfile(id: string) {
-    if (id === defaultProfile.id) {
-      return;
-    }
     const state = await readState();
     state.profiles = state.profiles.filter((profile) => profile.id !== id);
     state.plans = state.plans.filter((plan) => plan.profileId !== id);

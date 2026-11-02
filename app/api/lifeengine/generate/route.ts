@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from '@/lib/logging/logger';
 import { db } from '@/lib/utils/db';
-import { isAuthenticated } from '@/lib/auth';
+import { currentUserId } from '@/lib/auth';
 import type { ProfileRow } from '@/lib/utils/db';
 
 const logger = new Logger('system');
@@ -70,6 +70,9 @@ const dailyRequestCount = new Map<string, { date: string; count: number }>();
 // 💰 COST CIRCUIT BREAKER: Global daily budget protection
 const globalDailyPlanCount = new Map<string, number>();
 const MAX_DAILY_PLAN_RUNS = Number(process.env.LIFEENGINE_MAX_DAILY_PLAN_RUNS ?? "40"); // default 40 plans/day
+// Anyone can sign up, so one account must not be able to spend the whole day's AI quota.
+const MAX_DAILY_AI_PLANS_PER_ACCOUNT = Number(process.env.LIFEENGINE_MAX_DAILY_AI_PLANS_PER_ACCOUNT ?? "10");
+const accountDailyAiRuns = new Map<string, { date: string; count: number }>();
 
 // ⏱️ CRITICAL: Set Vercel function timeout to maximum for Pro plan
 // Without this, Vercel uses default 60s timeout which is too short!
@@ -107,8 +110,8 @@ export async function POST(req: NextRequest) {
   
   try {
     // 🔒 AUTHENTICATION CHECK
-    const authenticated = await isAuthenticated();
-    if (!authenticated) {
+    const uid = await currentUserId();
+    if (!uid) {
       logger.warn('Unauthorized API access attempt', {
         endpoint: '/api/lifeengine/generate',
         ip: req.headers.get('x-forwarded-for') || 'unknown',
@@ -138,7 +141,8 @@ export async function POST(req: NextRequest) {
     const today = new Date().toISOString().split('T')[0];
 
     if (MAX_REQUESTS_PER_DAY > 0) {
-      const profileLimit = dailyRequestCount.get(input.profileId);
+      const limitKey = `${uid}:${input.profileId}`;
+      const profileLimit = dailyRequestCount.get(limitKey);
       
       if (profileLimit) {
         if (profileLimit.date === today && profileLimit.count >= MAX_REQUESTS_PER_DAY) {
@@ -153,13 +157,25 @@ export async function POST(req: NextRequest) {
           }, { status: 429 });
         }
         if (profileLimit.date !== today) {
-          dailyRequestCount.set(input.profileId, { date: today, count: 1 });
+          dailyRequestCount.set(limitKey, { date: today, count: 1 });
         } else {
           profileLimit.count++;
         }
       } else {
-        dailyRequestCount.set(input.profileId, { date: today, count: 1 });
+        dailyRequestCount.set(limitKey, { date: today, count: 1 });
       }
+    }
+
+    if (appVersion === 'current' && MAX_DAILY_AI_PLANS_PER_ACCOUNT > 0) {
+      const used = accountDailyAiRuns.get(uid);
+      const count = used?.date === today ? used.count : 0;
+      if (count >= MAX_DAILY_AI_PLANS_PER_ACCOUNT) {
+        return NextResponse.json({
+          error: `You have used today's ${MAX_DAILY_AI_PLANS_PER_ACCOUNT} AI plans. Try again tomorrow, or switch to the built-in rule engine in Settings.`,
+          retryAfter: 'tomorrow',
+        }, { status: 429 });
+      }
+      accountDailyAiRuns.set(uid, { date: today, count: count + 1 });
     }
 
     // 🔒 GLOBAL DAILY GENERATION CAP (cost-optimized): block only after previous runs complete
@@ -183,7 +199,7 @@ export async function POST(req: NextRequest) {
       shouldTrackPlanCompletion = true;
     }
 
-    const cacheKey = `${input.profileId}-${input.plan_type.primary}-${JSON.stringify(input.goals)}`;
+    const cacheKey = `${uid}-${input.profileId}-${input.plan_type.primary}-${JSON.stringify(input.goals)}`;
     
     console.log(`✅ [STAGE 1/5: validation] Completed in ${Math.ceil((Date.now() - stage1Start)/1000)}s`);
     
@@ -845,8 +861,9 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks. Be thorough and deta
       planData.source = appVersion === 'current' ? 'gemini' : 'rule-engine';
       planData.inputSummary = inputSummary;
 
-      // Store in memory cache (used as a hot fallback before persistence catches up)
-      TH_PLANS.set(planId, planData);
+      // Store in memory cache (used as a hot fallback before persistence catches up).
+      // The cache is shared by every account on this server, so tag the owner.
+      TH_PLANS.set(planId, { ...planData, ownerId: uid });
 
       await db.savePlan({
         planId,

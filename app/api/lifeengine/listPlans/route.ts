@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/utils/db";
+import { currentUserId } from "@/lib/auth";
 
 declare global {
   var TH_PLANS: Map<string, any> | undefined;
@@ -35,8 +36,10 @@ export async function GET(request: Request) {
       };
     });
 
+    const uid = await currentUserId();
     for (const cached of MEMORY_PLAN_CACHE.values()) {
       if (!cached?.planId || seen.has(cached.planId)) continue;
+      if (!uid || cached.ownerId !== uid) continue;
       if (profileId && profileId !== "all" && cached.profileId !== profileId) continue;
       seen.add(cached.planId);
       formattedPlans.push({

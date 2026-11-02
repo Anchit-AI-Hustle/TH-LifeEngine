@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
@@ -41,6 +42,27 @@ function Item({ item, active, onNavigate }: { item: NavItem; active: boolean; on
   );
 }
 
+/** "+91 ••••• •5238": which account is signed in, without showing the number. */
+function SignedInAs() {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { mobile?: string | null } | null) => live && setLabel(d?.mobile ?? null))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!label) return null;
+  return (
+    <p className="truncate px-3 pb-1 text-xs text-gray-500" title="Signed in">
+      Signed in as <span className="font-medium tabular-nums text-gray-700">{label}</span>
+    </p>
+  );
+}
+
 /** The navigation itself; rendered in the desktop rail and in the phone drawer. */
 export default function Sidebar({ onNavigate, showBrand = true }: { onNavigate?: () => void; showBrand?: boolean }) {
   const current = activeHref(usePathname());
@@ -65,6 +87,7 @@ export default function Sidebar({ onNavigate, showBrand = true }: { onNavigate?:
         ))}
       </nav>
       <div className="space-y-0.5 border-t border-gray-200 px-3 py-3">
+        <SignedInAs />
         <Item item={SETTINGS_ITEM} active={current === SETTINGS_ITEM.href} onNavigate={onNavigate} />
         <LogoutButton />
       </div>

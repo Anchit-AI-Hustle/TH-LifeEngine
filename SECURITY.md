@@ -47,17 +47,27 @@ nano .env
 GOOGLE_API_KEY=your_actual_api_key_here
 ```
 
-### 2. Sign-in (4-digit PIN)
-The app has one way in: a 4-digit PIN, checked on the server. Only its scrypt
-hash is stored, in the `APP_PIN_HASH` server env var. Without it, sign-in stays closed.
-```bash
-# Print the value to set (pick a PIN that is not easy to guess)
-printf 4827 | node scripts/pin-hash.mjs
-# Put the printed salt:hash in APP_PIN_HASH on the server (Vercel project env), then redeploy
-```
-After 5 wrong tries, sign-in locks for 15 minutes. Set `UPSTASH_REDIS_REST_URL` and
-`UPSTASH_REDIS_REST_TOKEN` (or the Vercel KV `KV_REST_API_URL` / `KV_REST_API_TOKEN`)
-to share the count across all server instances.
+### 2. Accounts (mobile number + 4-digit PIN)
+Anyone can create an account with a mobile number and a 4-digit PIN at `/login`.
+There is no SMS check, so the number identifies the account but is not verified.
+
+- `AUTH_SECRET` (server env var, at least 32 random characters) signs the session
+  cookie and keys every account record and PIN hash. Without it, sign-in stays
+  closed. Rotating it signs everyone out **and makes every existing PIN invalid**.
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+  ```
+- Account records live in Vercel Blob at `accounts/<HMAC(AUTH_SECRET, number)>.json`
+  and keep only a salted scrypt hash of the PIN, HMAC'd with `AUTH_SECRET`, plus the
+  last 4 digits of the number. Each account's profiles and plans live in their own
+  document, `users/<random id>/lifeengine.state.json`.
+- Easy PINs (1234, 0000, years, the number's own last 4 digits…) are refused.
+- After 5 wrong PINs, sign-in for that number locks for 15 minutes. Set
+  `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (or the Vercel KV
+  `KV_REST_API_URL` / `KV_REST_API_TOKEN`) to share the count across all server
+  instances.
+- `LEGACY_OWNER_MOBILE` (optional): the data saved before accounts existed is
+  copied into this number's account the first time it signs up or signs in.
 
 ---
 
