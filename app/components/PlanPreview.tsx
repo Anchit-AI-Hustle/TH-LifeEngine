@@ -1,753 +1,96 @@
 "use client";
 
-import React, { useState } from "react";
+import { useId, useMemo, useState } from "react";
+import clsx from "clsx";
 import type { LifeEnginePlan } from "@/app/types/lifeengine";
+import { daysFromWeeklySchedule } from "@/components/lifeengine/plan-view/model";
+import { PlanDayView } from "@/components/lifeengine/plan-view/PlanDayView";
+import { PlanReader } from "@/components/lifeengine/plan-view/PlanReader";
+import { PlanExtras, PlanSummaryCard } from "@/components/lifeengine/plan-view/PlanOverview";
 
 interface PlanPreviewProps {
   plan: LifeEnginePlan | null;
 }
 
-type TabType = "yoga" | "exercises" | "diet" | "holistic";
+type ViewChoice = "day" | "week";
 
+/**
+ * A Custom GPT plan inside another page (chat, Custom GPT). Same reading view
+ * as the plan page: read it day by day, or switch to the full week, which is
+ * also what the host page's PDF download captures.
+ */
 export default function PlanPreview({ plan }: PlanPreviewProps) {
-  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
-  const [activeTabs, setActiveTabs] = useState<Record<string, TabType>>({});
+  const [view, setView] = useState<ViewChoice>("day");
+  const uid = useId().replace(/:/g, "");
+  const days = useMemo(() => daysFromWeeklySchedule(plan?.weekly_schedule), [plan]);
+  const items = useMemo(() => days.map(({ label, sublabel, short, isToday }) => ({ label, sublabel, short, isToday })), [days]);
 
   if (!plan) return null;
 
-  const days = [
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-  ] as const;
-
-  const toggleDay = (dayKey: string) => {
-    setExpandedDays((prev) => ({ ...prev, [dayKey]: !prev[dayKey] }));
-  };
-
-  const setTab = (dayKey: string, tab: TabType) => {
-    setActiveTabs((prev) => ({ ...prev, [dayKey]: tab }));
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-3xl">👟</span>
-          <h2 className="text-2xl font-bold text-gray-800">
-            {plan.motivation ?? "Your Personalized Plan"}
-          </h2>
-        </div>
-        {plan.category_tag && (
-          <div className="inline-block px-3 py-1 bg-white rounded-full text-sm font-semibold text-purple-600 mb-3">
-            {plan.category_tag}
-          </div>
-        )}
-        <p className="text-gray-700 leading-relaxed">{plan.summary}</p>
-      </div>
+      <PlanSummaryCard plan={plan} />
 
-      {/* Weekly Schedule */}
-      <div className="space-y-4">
-        <h3 className="text-xl font-bold text-gray-800">📅 Weekly Schedule</h3>
-        {days.map((dayKey) => {
-          const dayPlan = plan.weekly_schedule[dayKey];
-          if (!dayPlan) return null;
-
-          const isExpanded = expandedDays[dayKey];
-          const activeTab = activeTabs[dayKey] || "yoga";
-
-          // Determine which tabs are available
-          const availableTabs: TabType[] = [];
-          if (dayPlan.yoga) availableTabs.push("yoga");
-          if (dayPlan.exercises && dayPlan.exercises.length > 0)
-            availableTabs.push("exercises");
-          if (dayPlan.diet) availableTabs.push("diet");
-          if (dayPlan.holistic) availableTabs.push("holistic");
-
-          return (
-            <div
-              key={dayKey}
-              className="rounded-2xl shadow-md border border-gray-200 bg-white overflow-hidden"
-            >
-              {/* Day Header - Clickable Accordion */}
-              <button
-                onClick={() => toggleDay(dayKey)}
-                className="w-full px-5 py-4 flex items-center justify-between bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">
-                    {dayKey === "monday" && "🌟"}
-                    {dayKey === "tuesday" && "💪"}
-                    {dayKey === "wednesday" && "🧘"}
-                    {dayKey === "thursday" && "�"}
-                    {dayKey === "friday" && "✨"}
-                    {dayKey === "saturday" && "�"}
-                    {dayKey === "sunday" && "🌸"}
-                  </span>
-                  <span className="font-bold text-lg capitalize text-purple-700">
-                    {dayKey}
-                  </span>
-                </div>
-                <span className="text-xl text-gray-600">
-                  {isExpanded ? "▲" : "▼"}
-                </span>
-              </button>
-
-              {/* Expandable Content */}
-              {isExpanded && (
-                <div className="p-5">
-                  {/* Tabs */}
-                  {availableTabs.length > 1 && (
-                    <div className="flex gap-2 mb-4 border-b border-gray-200 pb-2">
-                      {availableTabs.map((tab) => (
-                        <button
-                          key={tab}
-                          onClick={() => setTab(dayKey, tab)}
-                          className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${
-                            activeTab === tab
-                              ? "bg-purple-600 text-white"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                        >
-                          {tab === "yoga" && "🧘‍♀️ Yoga"}
-                          {tab === "exercises" && "🏋️ Exercises"}
-                          {tab === "diet" && "🥗 Meals"}
-                          {tab === "holistic" && "🌟 Wellness"}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Tab Content */}
-                  <div className="space-y-4">
-                    {activeTab === "yoga" && dayPlan.yoga && (
-                      <YogaSection yoga={dayPlan.yoga} />
-                    )}
-                    {activeTab === "exercises" &&
-                      dayPlan.exercises &&
-                      dayPlan.exercises.length > 0 && (
-                        <ExercisesSection exercises={dayPlan.exercises} />
-                      )}
-                    {activeTab === "diet" && dayPlan.diet && (
-                      <DietSection diet={dayPlan.diet} />
-                    )}
-                    {activeTab === "holistic" && dayPlan.holistic && (
-                      <HolisticSection holistic={dayPlan.holistic} />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-blue-50 rounded-xl p-5 shadow-sm">
-          <div className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
-            <span>💧</span> Hydration Goals
-          </div>
-          <p className="text-gray-700">{plan.hydration_goals}</p>
-        </div>
-
-        <div className="bg-pink-50 rounded-xl p-5 shadow-sm">
-          <div className="font-semibold text-pink-800 mb-2 flex items-center gap-2">
-            <span>🔄</span> Recovery Tips
-          </div>
-          <ul className="text-gray-700 text-sm space-y-1">
-            {plan.recovery_tips.map((tip, i) => (
-              <li key={i}>• {tip}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* Disclaimer */}
-      {plan.disclaimer && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-xl">⚠️</span>
+      {days.length > 0 ? (
+        <section aria-labelledby={`${uid}-schedule`}>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <span className="font-semibold text-yellow-800">
-                Important Notice:
-              </span>
-              <p className="text-gray-700 mt-1">{plan.disclaimer}</p>
+              <h3 id={`${uid}-schedule`} className="text-base font-semibold text-gray-900">
+                Weekly schedule
+              </h3>
+              <p className="text-sm text-gray-500">
+                {days.length} {days.length === 1 ? "day" : "days"} of practice, training and meals
+              </p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Metadata */}
-      <div className="text-xs text-gray-500 border-t pt-4">
-        <div className="flex flex-wrap gap-4">
-          <span>
-            Generated by: <strong>{plan.metadata.generated_by}</strong>
-          </span>
-          <span>
-            Plan type:{" "}
-            <strong>{plan.metadata.plan_type.join(", ")}</strong>
-          </span>
-          <span>
-            Language: <strong>{plan.metadata.language}</strong>
-          </span>
-          <span>
-            Created:{" "}
-            <strong>
-              {new Date(plan.metadata.timestamp).toLocaleString()}
-            </strong>
-          </span>
-          {plan.metadata.profile_id && (
-            <span>
-              Profile ID: <strong>{plan.metadata.profile_id}</strong>
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ========== Section Components ==========
-
-function YogaSection({ yoga }: { yoga: any }) {
-  // Calculate total calories burned
-  const totalCalories = yoga.sequence?.reduce(
-    (sum: number, pose: any) => sum + (pose.calories_burned || 0),
-    0
-  );
-
-  return (
-    <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl">
-      <div className="font-semibold text-purple-800 mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span>🧘‍♀️</span> Yoga Session
-        </div>
-        {totalCalories > 0 && (
-          <div className="text-red-600 font-bold text-sm bg-white px-3 py-1 rounded-full shadow-sm">
-            🔥 {totalCalories} cal total
-          </div>
-        )}
-      </div>
-
-      {/* Warmup & Cooldown */}
-      <div className="text-sm text-gray-700 mb-3 flex gap-4">
-        <span className="font-medium">
-          ⏱️ Warmup: {yoga.warmup_min ?? 0} min
-        </span>
-        <span className="font-medium">
-          ⏱️ Cooldown: {yoga.cooldown_min ?? 0} min
-        </span>
-      </div>
-
-      {/* Focus Area */}
-      {yoga.focus_area && (
-        <div className="text-sm text-purple-700 mb-3 p-2 bg-white rounded-lg">
-          <span className="font-medium">🎯 Focus:</span> {yoga.focus_area}
-        </div>
-      )}
-
-      {/* Yoga Poses */}
-      {yoga.sequence && yoga.sequence.length > 0 && (
-        <div className="space-y-3 mb-3">
-          {yoga.sequence.map((pose: any, i: number) => (
-            <div key={i} className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
-              <div className="flex items-start justify-between mb-2">
-                <h4 className="font-bold text-gray-800 text-base">
-                  {pose.name}
-                </h4>
-                <div className="flex items-center gap-2">
-                  {pose.calories_burned && (
-                    <span className="text-red-600 font-semibold text-xs bg-red-50 px-2 py-1 rounded-full">
-                      🔥 {pose.calories_burned} cal
-                    </span>
+            <div role="radiogroup" aria-label="Show" className="inline-grid grid-flow-col rounded-xl bg-gray-100 p-1">
+              {(
+                [
+                  ["day", "By day"],
+                  ["week", "Full week"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={view === value}
+                  onClick={() => setView(value)}
+                  className={clsx(
+                    "min-h-[40px] rounded-lg px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100",
+                    view === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800",
                   )}
-                  <span className="text-purple-600 font-semibold text-sm">
-                    {pose.duration_min} min
-                  </span>
-                </div>
-              </div>
-
-              {/* Benefits */}
-              {pose.benefits && (
-                <div className="text-sm text-green-700 mb-2 p-2 bg-green-50 rounded">
-                  <span className="font-medium">✨ Benefits:</span>{" "}
-                  {pose.benefits}
-                </div>
-              )}
-
-              {/* Step-by-step Instructions */}
-              {pose.steps && pose.steps.length > 0 && (
-                <div className="mb-2">
-                  <div className="font-medium text-sm text-gray-700 mb-1">
-                    📋 How to Perform:
-                  </div>
-                  <ol className="space-y-1 text-sm text-gray-700">
-                    {pose.steps.map((step: string, idx: number) => (
-                      <li key={idx} className="pl-2">
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              {/* Breathing Instructions */}
-              {pose.breathing_instructions && (
-                <div className="text-sm text-blue-700 mb-2 p-2 bg-blue-50 rounded">
-                  <span className="font-medium">🌬️ Breathing:</span>{" "}
-                  {pose.breathing_instructions}
-                </div>
-              )}
-
-              {/* Modifications */}
-              {pose.modifications && (
-                <div className="text-xs text-gray-600 mb-2">
-                  <span className="font-medium">💡 Modifications:</span>{" "}
-                  {pose.modifications}
-                </div>
-              )}
-
-              {/* Common Mistakes */}
-              {pose.common_mistakes && pose.common_mistakes.length > 0 && (
-                <div className="text-xs text-red-600 p-2 bg-red-50 rounded">
-                  <span className="font-medium">⚠️ Avoid:</span>
-                  <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                    {pose.common_mistakes.map((mistake: string, idx: number) => (
-                      <li key={idx}>{mistake}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Focus */}
-              {pose.focus && (
-                <div className="text-xs text-gray-600 mt-2">
-                  <span className="font-medium">🎯 Focus:</span> {pose.focus}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Breathwork */}
-      {yoga.breathwork && (
-        <div className="text-sm text-gray-700 mb-2 p-3 bg-white rounded-lg">
-          <span className="font-medium">🌬️ Breathwork Practice:</span>{" "}
-          {yoga.breathwork}
-        </div>
-      )}
-
-      {/* Journal Prompt */}
-      {yoga.journal_prompt && (
-        <div className="text-sm text-gray-700 p-3 bg-white rounded-lg">
-          <span className="font-medium">📝 Journal Prompt:</span>{" "}
-          {yoga.journal_prompt}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExercisesSection({ exercises }: { exercises: any[] }) {
-  // Calculate total calories burned
-  const totalCalories = exercises.reduce((sum, ex) => sum + (ex.calories_burned || 0), 0);
-
-  return (
-    <div className="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl">
-      <div className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-        <span>🏋️</span> Fitness Exercises
-      </div>
-
-      {/* Total Calories Burned */}
-      {totalCalories > 0 && (
-        <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-orange-200">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Total Calories Burned:</span>
-            <span className="text-2xl font-bold text-red-600 flex items-center gap-1">
-              🔥 {Math.round(totalCalories)} cal
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {exercises.map((exercise, i) => (
-          <div key={i} className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-orange-500">
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1">
-                <h4 className="font-bold text-gray-800 text-base flex items-center gap-2 flex-wrap">
-                  {exercise.name}
-                  {exercise.calories_burned && (
-                    <span className="inline-flex items-center px-2 py-1 text-xs font-bold text-red-600 bg-red-50 rounded-full">
-                      🔥 {Math.round(exercise.calories_burned)} cal
-                    </span>
-                  )}
-                </h4>
-                {exercise.type && (
-                  <span className="text-xs text-orange-600 font-semibold uppercase">
-                    {exercise.type}
-                  </span>
-                )}
-                {/* Target Muscles */}
-                {exercise.target_muscles && exercise.target_muscles.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {exercise.target_muscles.map((muscle: string, idx: number) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-purple-700 bg-purple-100 rounded-full"
-                      >
-                        💪 {muscle}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {exercise.duration_min && (
-                <span className="text-orange-600 font-semibold text-sm whitespace-nowrap ml-2">
-                  ⏱️ {exercise.duration_min} min
-                </span>
-              )}
-            </div>
-
-            {/* Sets, Reps, Rest */}
-            {(exercise.sets || exercise.reps || exercise.rest_period) && (
-              <div className="flex gap-4 mb-2 text-sm text-gray-700 font-medium">
-                {exercise.sets && <span>🔢 {exercise.sets} sets</span>}
-                {exercise.reps && <span>⚡ {exercise.reps} reps</span>}
-                {exercise.rest_period && <span>⏸️ Rest: {exercise.rest_period}</span>}
-              </div>
-            )}
-
-            {/* Description */}
-            {exercise.description && (
-              <p className="text-sm text-gray-700 mb-2">{exercise.description}</p>
-            )}
-
-            {/* Step-by-step Instructions */}
-            {exercise.steps && exercise.steps.length > 0 && (
-              <div className="mb-2">
-                <div className="font-medium text-sm text-gray-700 mb-1">
-                  📋 Movement Instructions:
-                </div>
-                <ol className="space-y-1 text-sm text-gray-700">
-                  {exercise.steps.map((step: string, idx: number) => (
-                    <li key={idx} className="pl-2">
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {/* Form Cues */}
-            {exercise.form_cues && exercise.form_cues.length > 0 && (
-              <div className="text-sm text-blue-700 mb-2 p-2 bg-blue-50 rounded">
-                <span className="font-medium">✅ Form Cues:</span>
-                <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                  {exercise.form_cues.map((cue: string, idx: number) => (
-                    <li key={idx}>{cue}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Common Mistakes */}
-            {exercise.common_mistakes && exercise.common_mistakes.length > 0 && (
-              <div className="text-sm text-red-700 mb-2 p-2 bg-red-50 rounded">
-                <span className="font-medium">⚠️ Common Mistakes to Avoid:</span>
-                <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                  {exercise.common_mistakes.map((mistake: string, idx: number) => (
-                    <li key={idx}>{mistake}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Progressions & Regressions */}
-            <div className="flex gap-2">
-              {exercise.progressions && (
-                <div className="text-xs text-green-600 flex-1 p-2 bg-green-50 rounded">
-                  <span className="font-medium">⬆️ Progress:</span>{" "}
-                  {exercise.progressions}
-                </div>
-              )}
-              {exercise.regressions && (
-                <div className="text-xs text-yellow-600 flex-1 p-2 bg-yellow-50 rounded">
-                  <span className="font-medium">⬇️ Regress:</span>{" "}
-                  {exercise.regressions}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DietSection({ diet }: { diet: any }) {
-  // Calculate total daily nutrition
-  const meals = ["breakfast", "lunch", "dinner"];
-  const totalNutrition = meals.reduce((acc, mealKey) => {
-    const meal = diet[mealKey];
-    if (meal) {
-      acc.calories += meal.calories || 0;
-      acc.protein += meal.protein_g || 0;
-      acc.carbs += meal.carbs_g || 0;
-      acc.fat += meal.fat_g || 0;
-      acc.fiber += meal.fiber_g || 0;
-    }
-    return acc;
-  }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
-
-  return (
-    <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
-      <div className="font-semibold text-green-800 mb-3 flex items-center gap-2">
-        <span>🥗</span> Nutrition Plan
-      </div>
-
-      {/* Daily Nutrition Summary */}
-      {totalNutrition.calories > 0 && (
-        <div className="mb-4 p-4 bg-white rounded-xl shadow-sm border border-green-200">
-          <div className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span>📊</span> Daily Nutrition Totals
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="text-center p-2 bg-gradient-to-br from-red-50 to-orange-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{Math.round(totalNutrition.calories)}</div>
-              <div className="text-xs text-gray-600 font-medium">🔥 Calories</div>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{Math.round(totalNutrition.protein)}g</div>
-              <div className="text-xs text-gray-600 font-medium">🥚 Protein</div>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">{Math.round(totalNutrition.carbs)}g</div>
-              <div className="text-xs text-gray-600 font-medium">🍞 Carbs</div>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{Math.round(totalNutrition.fat)}g</div>
-              <div className="text-xs text-gray-600 font-medium">🥑 Fat</div>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-green-50 to-lime-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{Math.round(totalNutrition.fiber)}g</div>
-              <div className="text-xs text-gray-600 font-medium">🌾 Fiber</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {["breakfast", "lunch", "dinner", "evening_tea"].map((mealKey) => {
-          const meal = diet[mealKey];
-          if (!meal) return null;
-
-          const emoji =
-            mealKey === "breakfast"
-              ? "🌅"
-              : mealKey === "lunch"
-              ? "☀️"
-              : mealKey === "dinner"
-              ? "🌙"
-              : "☕";
-
-          return (
-            <div key={mealKey} className="bg-white p-4 rounded-lg shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-bold text-gray-800 capitalize flex items-center gap-2">
-                  <span className="text-xl">{emoji}</span>
-                  {mealKey.replace("_", " ")}
-                </div>
-                {(meal.preparation_time || meal.cooking_time) && (
-                  <div className="text-xs text-gray-600 flex gap-2">
-                    {meal.preparation_time && (
-                      <span>⏱️ Prep: {meal.preparation_time}</span>
-                    )}
-                    {meal.cooking_time && (
-                      <span>🔥 Cook: {meal.cooking_time}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <h5 className="text-gray-800 font-semibold mb-2">{meal.title}</h5>
-
-              {/* Nutrition Facts */}
-              {(meal.calories || meal.protein_g || meal.carbs_g || meal.fat_g) && (
-                <div className="mb-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-                  <div className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-2">
-                    📊 Nutrition Facts
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {meal.calories && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-red-600">{Math.round(meal.calories)}</div>
-                        <div className="text-xs text-gray-600">🔥 Cal</div>
-                      </div>
-                    )}
-                    {meal.protein_g && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-blue-600">{Math.round(meal.protein_g)}g</div>
-                        <div className="text-xs text-gray-600">🥚 Protein</div>
-                      </div>
-                    )}
-                    {meal.carbs_g && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-yellow-600">{Math.round(meal.carbs_g)}g</div>
-                        <div className="text-xs text-gray-600">🍞 Carbs</div>
-                      </div>
-                    )}
-                    {meal.fat_g && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-purple-600">{Math.round(meal.fat_g)}g</div>
-                        <div className="text-xs text-gray-600">🥑 Fat</div>
-                      </div>
-                    )}
-                    {meal.fiber_g && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-green-600">{Math.round(meal.fiber_g)}g</div>
-                        <div className="text-xs text-gray-600">🌾 Fiber</div>
-                      </div>
-                    )}
-                    {meal.sugar_g && (
-                      <div className="flex flex-col items-center p-2 bg-white rounded">
-                        <div className="text-lg font-bold text-pink-600">{Math.round(meal.sugar_g)}g</div>
-                        <div className="text-xs text-gray-600">🍬 Sugar</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Ingredients */}
-              {meal.ingredients && meal.ingredients.length > 0 && (
-                <div className="mb-2">
-                  <div className="font-medium text-sm text-gray-700 mb-1">
-                    🛒 Ingredients:
-                  </div>
-                  <ul className="text-sm text-gray-700 list-disc list-inside space-y-0.5">
-                    {meal.ingredients.map((ingredient: string, idx: number) => (
-                      <li key={idx}>{ingredient}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Recipe Steps */}
-              {meal.recipe_steps && meal.recipe_steps.length > 0 && (
-                <div className="mb-2">
-                  <div className="font-medium text-sm text-gray-700 mb-1">
-                    👨‍🍳 Preparation Steps:
-                  </div>
-                  <ol className="text-sm text-gray-700 space-y-1">
-                    {meal.recipe_steps.map((step: string, idx: number) => (
-                      <li key={idx} className="pl-2">
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              {/* Notes */}
-              {meal.notes && (
-                <div className="text-sm text-gray-600 mb-2 p-2 bg-gray-50 rounded">
-                  💡 {meal.notes}
-                </div>
-              )}
-
-              {/* Portion Guidance */}
-              {meal.portion_guidance && (
-                <div className="text-sm text-green-600 mb-2">
-                  📏 <span className="font-medium">Portion:</span>{" "}
-                  {meal.portion_guidance}
-                </div>
-              )}
-
-              {/* Swaps */}
-              {meal.swap && (
-                <div className="text-sm text-blue-600 p-2 bg-blue-50 rounded">
-                  🔄 <span className="font-medium">Healthy Swap:</span> {meal.swap}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Snacks */}
-        {diet.snacks && diet.snacks.length > 0 && (
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <div className="font-bold text-gray-800 flex items-center gap-2 mb-3">
-              <span className="text-xl">🍎</span> Snacks
-            </div>
-            <div className="space-y-2">
-              {diet.snacks.map((snack: any, i: number) => (
-                <div key={i} className="p-2 bg-gray-50 rounded">
-                  <div className="font-semibold text-gray-800">{snack.title}</div>
-                  {snack.notes && (
-                    <div className="text-sm text-gray-600 mt-1">{snack.notes}</div>
-                  )}
-                  {snack.ingredients && snack.ingredients.length > 0 && (
-                    <ul className="text-xs text-gray-600 list-disc list-inside mt-1">
-                      {snack.ingredients.map((ing: string, idx: number) => (
-                        <li key={idx}>{ing}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                >
+                  {label}
+                </button>
               ))}
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function HolisticSection({ holistic }: { holistic: any }) {
-  return (
-    <div className="p-4 bg-blue-50 rounded-xl">
-      <div className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
-        <span>🌟</span> Holistic Wellness
-      </div>
-
-      {holistic.rest_day && (
-        <div className="text-sm bg-white p-3 rounded-lg mb-3 text-center font-medium text-blue-700">
-          ✅ Rest & Recovery Day
-        </div>
+          {view === "day" ? (
+            <PlanReader
+              items={items}
+              idPrefix={`${uid}-preview`}
+              layout="horizontal"
+              sticky={false}
+              renderDay={(index, { headingId, stepper }) => (
+                <PlanDayView day={days[index]} idPrefix={`${uid}-d${index}`} headingId={headingId} titleActions={stepper} />
+              )}
+            />
+          ) : (
+            <div className="space-y-10">
+              {days.map((day, index) => (
+                <PlanDayView key={index} day={day} idPrefix={`${uid}-w${index}`} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-sm text-gray-600">
+          This plan does not include a day-by-day schedule.
+        </p>
       )}
 
-      <div className="space-y-2 text-sm">
-        {holistic.mindfulness && (
-          <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-800">🧠 Mindfulness:</span>{" "}
-            <span className="text-gray-700">{holistic.mindfulness}</span>
-          </div>
-        )}
-
-        {holistic.affirmation && (
-          <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-800">💫 Affirmation:</span>{" "}
-            <span className="text-gray-700 italic">
-              "{holistic.affirmation}"
-            </span>
-          </div>
-        )}
-
-        {holistic.sleep && (
-          <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-800">😴 Sleep:</span>{" "}
-            <span className="text-gray-700">{holistic.sleep}</span>
-          </div>
-        )}
-      </div>
+      <PlanExtras plan={plan} />
     </div>
   );
 }
