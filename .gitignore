@@ -141,3 +141,6 @@ Thumbs.db
 .turbo
 # Local account and plan data (development)
 .lifeengine-data/
+
+# Agent worktrees (local only)
+.claude/worktrees/

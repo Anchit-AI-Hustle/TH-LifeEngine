@@ -86,7 +86,8 @@ export default function Sidebar({ onNavigate, showBrand = true }: { onNavigate?:
           </div>
         ))}
       </nav>
-      <div className="space-y-0.5 border-t border-gray-200 px-3 py-3">
+      {/* lg:pb-[68px] keeps a strip free for the docked portfolio launchers. */}
+      <div className="space-y-0.5 border-t border-gray-200 px-3 py-3 lg:pb-[68px]">
         <SignedInAs />
         <Item item={SETTINGS_ITEM} active={current === SETTINGS_ITEM.href} onNavigate={onNavigate} />
         <LogoutButton />

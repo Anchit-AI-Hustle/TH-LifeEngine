@@ -107,7 +107,7 @@ export default function LoginPage() {
   const pinClass = (bad?: string) => clsx(inputClass(bad), 'text-center text-2xl tracking-[0.75em] placeholder:tracking-[0.5em] placeholder:text-gray-300');
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-emerald-50 px-4 pb-28 pt-10 sm:pb-10">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-emerald-50 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-emerald-500 text-lg font-bold text-white shadow-lg shadow-indigo-500/20">
