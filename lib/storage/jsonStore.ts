@@ -5,7 +5,8 @@
 // blobs), so every caller must use an unguessable key: account records are
 // keyed by an HMAC of the mobile number under AUTH_SECRET, and user data by a
 // random 128-bit account id. Nothing lists the store.
-import { BlobNotFoundError, head, put } from '@vercel/blob';
+import { BlobNotFoundError, del, head, put } from '@vercel/blob';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -26,6 +27,50 @@ function checkKey(key: string) {
   if (process.env.VERCEL && !useBlob()) throw new Error('BLOB_READ_WRITE_TOKEN is not set on this deployment');
 }
 
+// Blob overwrites take up to 60s to reach the CDN, so reading a document soon
+// after it was overwritten can return the older copy, and the next save then
+// writes that older copy back (saved plans and profiles were lost this way).
+// So a document's content is never overwritten: each save goes to a new
+// version path, and the document's own key holds a small pointer to it. The
+// pointer is found with head(), which asks the Blob API rather than the CDN,
+// and a version path is never cached before it exists.
+const VERSION_IN_TYPE = /;\s*v=([a-z0-9-]{6,64})/i;
+const POINTER_FIELD = '__lifeengineVersion';
+const versionPath = (key: string, v: string) => `${key.replace(/\.json$/i, '')}.versions/${v}.json`;
+const isVersionId = (v: unknown): v is string => typeof v === 'string' && /^[a-z0-9-]{6,64}$/i.test(v);
+
+async function fetchBlob(url: string): Promise<Response> {
+  return fetch(url, { cache: 'no-store' });
+}
+
+async function readBlob<T>(key: string, attempt = 0): Promise<T | null> {
+  let meta;
+  try {
+    meta = await head(key);
+  } catch (e) {
+    if (e instanceof BlobNotFoundError) return null;
+    throw e;
+  }
+  const origin = new URL(meta.url).origin;
+  let version = VERSION_IN_TYPE.exec(meta.contentType ?? '')?.[1] ?? null;
+  if (!version) {
+    // A document saved before versioning, or a pointer whose type lost its
+    // version: read the body (the query only bypasses the browser cache).
+    const res = await fetchBlob(`${meta.url}?v=${meta.uploadedAt.getTime()}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`store read failed (${res.status})`);
+    const body = (await res.json()) as Record<string, unknown> | null;
+    const pointed = body && typeof body === 'object' ? body[POINTER_FIELD] : undefined;
+    if (!isVersionId(pointed)) return body as T;
+    version = pointed;
+  }
+  const res = await fetchBlob(`${origin}/${versionPath(key, version)}`);
+  // A newer save removed this version between our head() and fetch: look again.
+  if (res.status === 404 && attempt < 2) return readBlob<T>(key, attempt + 1);
+  if (!res.ok) throw new Error(`store read failed (${res.status})`);
+  return (await res.json()) as T;
+}
+
 export async function readJson<T>(key: string): Promise<T | null> {
   checkKey(key);
   if (!useBlob()) {
@@ -36,21 +81,7 @@ export async function readJson<T>(key: string): Promise<T | null> {
       throw e;
     }
   }
-  let meta;
-  try {
-    meta = await head(key);
-  } catch (e) {
-    if (e instanceof BlobNotFoundError) return null;
-    throw e;
-  }
-  // Read from origin storage, not the CDN: an overwrite can take up to 60s to
-  // reach the CDN cache, and a stale read here would be written back over the
-  // newer document (saved plans and profiles went missing that way).
-  // cache=0 is what the Blob SDK's useCache: false sends.
-  const res = await fetch(`${meta.url}?cache=0&v=${meta.uploadedAt.getTime()}`, { cache: 'no-store' });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`store read failed (${res.status})`);
-  return (await res.json()) as T;
+  return readBlob<T>(key);
 }
 
 export async function writeJson(key: string, value: unknown): Promise<void> {
@@ -65,10 +96,30 @@ export async function writeJson(key: string, value: unknown): Promise<void> {
     await fs.rename(tmp, file);
     return;
   }
-  await put(key, body, {
+
+  let previous: { origin: string; version: string } | null = null;
+  try {
+    const meta = await head(key);
+    const v = VERSION_IN_TYPE.exec(meta.contentType ?? '')?.[1];
+    if (v) previous = { origin: new URL(meta.url).origin, version: v };
+  } catch (e) {
+    if (!(e instanceof BlobNotFoundError)) throw e;
+  }
+
+  const version = `${Date.now().toString(36)}-${randomBytes(8).toString('hex')}`;
+  await put(versionPath(key, version), body, {
     access: 'public',
     addRandomSuffix: false,
     contentType: 'application/json',
+  });
+  await put(key, JSON.stringify({ [POINTER_FIELD]: version }), {
+    access: 'public',
+    addRandomSuffix: false,
+    contentType: `application/json; v=${version}`,
     cacheControlMaxAge: 60,
   });
+  if (previous && previous.version !== version) {
+    // Tidy up; a failure only leaves an unused old version behind.
+    await del(`${previous.origin}/${versionPath(key, previous.version)}`).catch(() => {});
+  }
 }
