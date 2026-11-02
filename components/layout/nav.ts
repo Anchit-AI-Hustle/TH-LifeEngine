@@ -6,6 +6,8 @@ import {
   House,
   LayoutDashboard,
   LibraryBig,
+  ListChecks,
+  Moon,
   Salad,
   Settings,
   Sparkles,
@@ -22,6 +24,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/lifeengine", label: "Home", icon: House },
       { href: "/lifeengine/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: "Daily",
+    items: [
+      { href: "/lifeengine/habits", label: "Habits", icon: ListChecks },
+      { href: "/lifeengine/sleep", label: "Sleep", icon: Moon },
     ],
   },
   {
