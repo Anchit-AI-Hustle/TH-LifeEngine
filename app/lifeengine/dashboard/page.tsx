@@ -794,12 +794,21 @@ export default function DashboardPage() {
               <EmptyState
                 icon={Sparkles}
                 title="No plans yet"
-                description="Create your first personalised plan. It takes under a minute and covers yoga, diet, sleep and habits."
+                description="Set up a first week in one go (profile, plans, diet, habits, sleep and fitness), or create a single plan."
                 action={
-                  <Link href="/lifeengine/create" className={primaryLinkClass}>
-                    <Plus className="h-4 w-4" aria-hidden />
-                    Create your first plan
-                  </Link>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Link href="/lifeengine/setup" className={primaryLinkClass}>
+                      <Sparkles className="h-4 w-4" aria-hidden />
+                      Set up my first week
+                    </Link>
+                    <Link
+                      href="/lifeengine/create"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                      Create one plan
+                    </Link>
+                  </div>
                 }
               />
             ) : filteredPlans.length === 0 ? (
