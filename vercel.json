@@ -10,9 +10,17 @@
     "app/api/lifeengine/custom-gpt-generate/route.ts": {
       "maxDuration": 300
     },
+    "app/api/lifeengine/diet/generate/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/lifeengine/chat/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/**/*.ts": {
       "maxDuration": 60
     }
   },
-  "regions": ["iad1"]
+  "regions": [
+    "iad1"
+  ]
 }
