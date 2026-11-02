@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { LogOut } from 'lucide-react';
 import clsx from 'clsx';
+import { clearLocal, flushPending } from '@/lib/sync/client';
 
 export default function LogoutButton({ className }: { className?: string }) {
   const [isLoading, setIsLoading] = useState(false);
@@ -12,8 +13,12 @@ export default function LogoutButton({ className }: { className?: string }) {
     setIsLoading(true);
     setFailed(false);
     try {
+      // Save the last changes to the account while the session still exists.
+      await flushPending();
       const response = await fetch('/api/auth/logout', { method: 'POST' });
       if (response.ok) {
+        // The account keeps its copy; this device should not.
+        clearLocal();
         // A full navigation drops every bit of client state from the session.
         window.location.assign('/login');
         return;

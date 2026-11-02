@@ -5,6 +5,7 @@
  */
 
 import { isDateKey } from "./logic";
+import { markChanged } from "@/lib/sync/client";
 import type { Challenge, Habit, HabitColor, HabitIcon, HabitsState } from "./types";
 
 export const HABITS_KEY = "lifeengine.habits.v1";
@@ -114,6 +115,7 @@ export function saveHabits(state: HabitsState): boolean {
   if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(HABITS_KEY, JSON.stringify(state));
+    markChanged(HABITS_KEY);
     return true;
   } catch {
     return false;

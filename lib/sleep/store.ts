@@ -3,6 +3,7 @@
  * or event handlers, never during render.
  */
 
+import { markChanged } from "@/lib/sync/client";
 import { DEFAULT_GOAL_MINUTES, isClock, isDateKey, TAG_LABELS } from "./logic";
 import type { SleepEntry, SleepQuality, SleepState, SleepTag } from "./types";
 
@@ -73,6 +74,7 @@ export function saveSleep(state: SleepState): boolean {
   if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(SLEEP_KEY, JSON.stringify(state));
+    markChanged(SLEEP_KEY);
     return true;
   } catch {
     return false;
