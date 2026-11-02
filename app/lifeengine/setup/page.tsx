@@ -28,6 +28,15 @@ export default function SetupPage() {
   );
   const [failed, setFailed] = useState(0);
 
+  // /lifeengine/setup?goals=Weight%20loss,Better%20sleep pre-ticks those goals.
+  useEffect(() => {
+    const wanted = (new URLSearchParams(window.location.search).get("goals") ?? "")
+      .split(",")
+      .map((g) => g.trim())
+      .filter((g) => GOAL_CHOICES.includes(g));
+    if (wanted.length) setForm((f) => ({ ...f, goals: wanted }));
+  }, []);
+
   useEffect(() => {
     listProfiles()
       .then((ps) => {

@@ -9,14 +9,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 const ENGINES = [
   {
     value: "current" as const,
-    title: "Gemini AI",
-    body: "Best results. Writes a fully personalised plan with Google Gemini. Uses the server's AI quota.",
+    title: "AI plan",
+    body: "Best results. Writes a plan around the person's goals, health notes and routine. Takes a minute or two.",
     icon: Sparkles,
   },
   {
     value: "oss" as const,
-    title: "Built-in rule engine",
-    body: "Free and instant. Builds the plan from the app's own rules and catalogues, with no AI call.",
+    title: "Quick plan (no AI)",
+    body: "Ready in seconds. Builds the plan from the app's own yoga, exercise and meal library.",
     icon: Cpu,
   },
 ];
@@ -40,9 +40,9 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Choose how plans are generated and manage data saved in this browser." />
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="text-base font-semibold text-gray-900">Plan engine</h2>
+        <h2 className="text-base font-semibold text-gray-900">How plans are made</h2>
         <p className="mt-1 text-sm text-gray-500">Used when you create a plan. You can switch at any time.</p>
-        <div role="radiogroup" aria-label="Plan engine" className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div role="radiogroup" aria-label="How plans are made" className="mt-4 grid gap-3 sm:grid-cols-2">
           {ENGINES.map((engine) => {
             const selected = version === engine.value;
             const Icon = engine.icon;

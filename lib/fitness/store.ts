@@ -68,6 +68,11 @@ export function getFitnessProfile(id: string): FitnessProfile | undefined {
   return getFitnessProfiles().find((p) => p.id === id);
 }
 
+/** The fitness profile started from a given person in /lifeengine/profiles, if any. */
+export function getFitnessProfileForSource(sourceProfileId: string): FitnessProfile | undefined {
+  return getFitnessProfiles().find((p) => p.sourceProfileId === sourceProfileId);
+}
+
 export function getActiveProfileId(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(ACTIVE_PROFILE_KEY);

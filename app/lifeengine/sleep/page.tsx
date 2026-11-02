@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -20,7 +20,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { SleepForm, type SleepDraft } from "@/components/lifeengine/sleep/SleepForm";
+import { SleepForm, type SavedSleepDraft, type SleepDraft } from "@/components/lifeengine/sleep/SleepForm";
 import { SleepChart } from "@/components/lifeengine/sleep/SleepChart";
 import { QUALITY_LABELS, formatNight } from "@/components/lifeengine/sleep/format";
 import {
@@ -53,10 +53,12 @@ export default function SleepPage() {
   const [range, setRange] = useState<7 | 30>(7);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<SleepDraft | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Shown where the person is looking: under the save button, or above the log after a delete.
+  const [notice, setNotice] = useState<{ id: number; text: string; where: "form" | "log" } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const freshDraft = useCallback((entries: SleepEntry[]): SleepDraft => {
@@ -65,7 +67,7 @@ export default function SleepPage() {
       night: suggestNight(entries, defaultNight(new Date())),
       bedtime: last?.bedtime ?? "23:00",
       wake: last?.wake ?? "07:00",
-      quality: 3,
+      quality: null,
       tags: [],
       notes: "",
     };
@@ -86,11 +88,20 @@ export default function SleepPage() {
     };
   }, [freshDraft]);
 
-  const flash = (text: string) => {
-    setNotice(text);
+  const flash = (text: string, where: "form" | "log" = "form") => {
+    setNotice({ id: Date.now(), text, where });
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+    noticeTimer.current = setTimeout(() => setNotice(null), 6000);
   };
+
+  // On a phone the confirmation can sit below the fold: bring it into view.
+  useEffect(() => {
+    if (!notice) return;
+    const el = noticeRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top < 64 || r.bottom > window.innerHeight - 80) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [notice]);
 
   const commit = (next: SleepState) => {
     setState(next);
@@ -110,7 +121,7 @@ export default function SleepPage() {
   );
   const nights = useMemo(() => (state && today ? windowNights(state.entries, today, range) : []), [state, today, range]);
 
-  const save = (d: SleepDraft) => {
+  const save = (d: SavedSleepDraft) => {
     if (!state) return;
     const entry: SleepEntry = {
       id: editing?.id ?? newId(),
@@ -125,7 +136,7 @@ export default function SleepPage() {
     const entries = upsertEntry(state.entries, entry);
     commit({ ...state, entries });
     flash(
-      `${editing ? "Updated" : "Saved"} ${formatNight(d.night)}: ${formatDuration(durationMinutes(d.bedtime, d.wake))} asleep.`,
+      `${editing ? "Updated" : "Saved"} ${formatNight(d.night)}: ${formatDuration(durationMinutes(d.bedtime, d.wake))} asleep. Synced to your account.`,
     );
     setEditingId(null);
     setDraft(freshDraft(entries));
@@ -152,7 +163,7 @@ export default function SleepPage() {
     commit({ ...state, entries });
     setConfirmId(null);
     if (editingId === e.id) cancelEdit();
-    flash(`Deleted ${formatNight(e.night)}.`);
+    flash(`Deleted ${formatNight(e.night)}.`, "log");
   };
 
   const loading = !state || !today || !draft;
@@ -166,16 +177,10 @@ export default function SleepPage() {
       />
 
       <p className="sr-only" role="status" aria-live="polite">
-        {notice ?? ""}
+        {notice?.text ?? ""}
       </p>
       {loadError ? <Alert text={loadError} /> : null}
       {saveFailed ? <Alert text="This browser is not saving changes (storage may be full or blocked). They will be lost when you leave the page." /> : null}
-      {notice ? (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 animate-[fade-in_200ms_ease-out]">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-          <span>{notice}</span>
-        </div>
-      ) : null}
 
       {loading ? (
         <LoadingState />
@@ -200,6 +205,7 @@ export default function SleepPage() {
                 takenNights={takenNights}
                 onSave={save}
                 onCancel={editing ? cancelEdit : undefined}
+                status={notice?.where === "form" ? <Notice key={notice.id} ref={noticeRef} text={notice.text} /> : null}
               />
             </section>
 
@@ -281,7 +287,14 @@ export default function SleepPage() {
               <h2 id="history-title" className="text-base font-semibold text-gray-900">
                 Sleep log
               </h2>
-              <p className="mt-1 text-sm text-gray-500">{state.entries.length} {state.entries.length === 1 ? "night" : "nights"} saved in this browser.</p>
+              <p className="mt-1 text-sm text-gray-500">
+                {state.entries.length} {state.entries.length === 1 ? "night" : "nights"} logged. Synced to your account.
+              </p>
+              {notice?.where === "log" ? (
+                <div className="mt-3">
+                  <Notice key={notice.id} ref={noticeRef} text={notice.text} />
+                </div>
+              ) : null}
               <ul className="mt-4 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white shadow-sm">
                 {history.map((e) => (
                   <HistoryRow
@@ -329,6 +342,18 @@ function lastNightNote(entries: SleepEntry[]): string | null {
   if (!e) return null;
   return `${formatNight(lastNight)} is logged (${formatDuration(durationMinutes(e.bedtime, e.wake))}). Add a missed night, or edit from the log below.`;
 }
+
+const Notice = forwardRef<HTMLDivElement, { text: string }>(function Notice({ text }, ref) {
+  return (
+    <div
+      ref={ref}
+      className="flex scroll-mt-20 items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 animate-[fade-in_200ms_ease-out]"
+    >
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+      <span>{text}</span>
+    </div>
+  );
+});
 
 function Alert({ text }: { text: string }) {
   return (

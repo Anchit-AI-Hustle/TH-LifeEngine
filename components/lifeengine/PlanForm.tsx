@@ -30,11 +30,13 @@ export type PlanFormData = PlanFormState & {
 export const defaultPlanFormData: PlanFormData = {
   fullName: "",
   age: 30,
-  gender: "other",
+  // No preselected gender: the person chooses (required).
+  gender: "",
   workSchedule: "9_to_5",
   preferredTime: "morning",
+  // Same starting plan type (Yoga) as the Custom GPT flow.
   ...defaultPlanFormState,
-  planTypes: [],
+  planTypes: [...defaultPlanFormState.planTypes],
   duration: DEFAULT_PLAN_DURATION_VALUE,
   intensity: INTENSITY_OPTIONS[1].value,
   focusAreas: [],
@@ -102,6 +104,13 @@ export function PlanForm({ formData, setFormData, errors = {}, profileSlot, prof
           newErrors.age = "Age must be at least 1";
         } else {
           delete newErrors.age;
+        }
+        break;
+      case "gender":
+        if (!value) {
+          newErrors.gender = "Please select a gender";
+        } else {
+          delete newErrors.gender;
         }
         break;
       case "planTypes":

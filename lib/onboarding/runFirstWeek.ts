@@ -12,7 +12,7 @@ import { loadSleep, newId as newSleepId, saveSleep } from '@/lib/sleep/store';
 import { createBlankProfile } from '@/lib/fitness/samples';
 import { buildFitnessPlan } from '@/lib/fitness/engine';
 import { logTemplateFromPlan } from '@/lib/fitness/tracker';
-import { getFitnessProfiles, saveFitnessPlan, saveFitnessProfile, saveLog, setActiveProfileId } from '@/lib/fitness/store';
+import { getFitnessProfileForSource, getFitnessProfiles, saveFitnessPlan, saveFitnessProfile, saveLog, setActiveProfileId } from '@/lib/fitness/store';
 import type { DailyLog, FitnessProfile, GoalId } from '@/lib/fitness/types';
 import type { Habit } from '@/lib/habits/types';
 import {
@@ -153,11 +153,12 @@ function seedSleep(p: ProfileBrief): string {
 
 function seedFitness(p: ProfileBrief): string {
   const female = /^f/i.test(p.gender);
-  const existing = getFitnessProfiles().find((f) => f.name === p.name);
+  const existing = getFitnessProfileForSource(p.id) ?? getFitnessProfiles().find((f) => f.name === p.name && !f.sourceProfileId);
   const goals = fitnessGoalsFor(p) as GoalId[];
   const profile: FitnessProfile = existing ?? {
     ...createBlankProfile(),
     name: p.name,
+    sourceProfileId: p.id,
     age: p.age || 30,
     sex: female ? 'female' : /^m/i.test(p.gender) ? 'male' : 'other',
     heightCm: female ? 158 : 172,

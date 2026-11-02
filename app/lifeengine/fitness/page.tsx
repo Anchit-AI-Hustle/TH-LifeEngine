@@ -1,16 +1,34 @@
 "use client";
 
 /**
- * Fitness & health hub: today's session, streak, profile management and the
- * way in to every other screen.
+ * Fitness overview: today's session, progress, the people set up for fitness
+ * and the way in to every other fitness screen.
  */
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  CalendarDays,
+  ChevronRight,
+  Download,
+  Flame,
+  HeartPulse,
+  LibraryBig,
+  Target,
+  Timer,
+  Trash2,
+  Upload,
+  UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 
-import styles from "./Fitness.module.css";
-import { Alert, Badge, EmptyState, Meter, Stat, useFitnessData } from "./ui";
-import { ACTIVITIES, CATEGORY_LABELS } from "@/lib/fitness/activities";
+import { Alert, Badge, Card, LinkButton, Meter, PageSkeleton, ProfileSwitcher, ROLE_LABEL, SectionHeading, SEX_LABEL, Stat, insightTone, useFitnessData } from "./ui";
+import { ProfileSourcePicker, possessive } from "@/components/lifeengine/fitness/ProfileSourcePicker";
+import { ProfileAvatar } from "@/app/lifeengine/profiles/ProfileAvatar";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { CATEGORY_LABELS } from "@/lib/fitness/activities";
 import { buildFitnessPlan } from "@/lib/fitness/engine";
 import { GOALS } from "@/lib/fitness/goals";
 import { CONDITIONS } from "@/lib/fitness/conditions";
@@ -21,15 +39,24 @@ import {
   getFitnessProfiles,
   getLatestPlanForProfile,
   getLogsForProfile,
+  importFitnessData,
   saveFitnessPlan,
   setActiveProfileId,
 } from "@/lib/fitness/store";
 import { summariseTracker, todayIso } from "@/lib/fitness/tracker";
 
-const INDOOR_COUNT = ACTIVITIES.filter((a) => a.environments.includes("indoor")).length;
-const OUTDOOR_COUNT = ACTIVITIES.filter((a) => a.environments.includes("outdoor")).length;
+const SECTIONS: { href: string; title: string; body: string; icon: LucideIcon }[] = [
+  { href: "/lifeengine/fitness/profile", title: "Health profile", body: "Goals, conditions, pain, safety screen, equipment and schedule.", icon: HeartPulse },
+  { href: "/lifeengine/fitness/planner", title: "Activity plan", body: "Your week, day by day, with effort targets and the reasons behind it.", icon: CalendarDays },
+  { href: "/lifeengine/fitness/tracker", title: "Activity tracker", body: "Log sessions, pain, sleep and mood, then read the trends.", icon: Activity },
+  { href: "/lifeengine/fitness/activities", title: "Activity library", body: "Every activity with steps, form cues and easier or harder versions.", icon: LibraryBig },
+];
 
 export default function FitnessHubPage() {
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ tone: "good" | "risk"; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [data, refresh] = useFitnessData(() => {
     const profile = getActiveProfile();
     return {
@@ -64,337 +91,312 @@ export default function FitnessHubPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (!data) return <p className={styles.muted}>Loading…</p>;
+  const upload = async (file: File) => {
+    try {
+      importFitnessData(await file.text());
+      setStatus({ tone: "good", text: "Fitness data imported." });
+      refresh();
+    } catch {
+      setStatus({ tone: "risk", text: "That file is not a fitness data export." });
+    }
+  };
+
+  if (!data) return <PageSkeleton />;
+
+  const { profile } = data;
 
   return (
-    <div className={styles.page}>
-      <header className={styles.hero}>
-        <div className={styles.heroTop}>
-          <div className={styles.stack}>
-            <span className={styles.eyebrow}>TH+ LifeEngine</span>
-            <h1 className={styles.title}>Fitness &amp; health activity planner</h1>
-            <p className={styles.subtitle}>
-              A daily activity plan built from your complete health picture — age, sex, conditions, medications, pain,
-              injuries, medical history, the time you actually have and the equipment you actually own. Indoor and
-              outdoor options across running, walking, cycling, swimming, gym, HIIT, sports, yoga, pilates, mobility,
-              breathwork, meditation, dance, martial arts and rehab. Then track it, and let the numbers tell you
-              whether it is working.
-            </p>
-          </div>
-          <div className={styles.stack}>
-            {data.profiles.length > 0 ? (
-              <label className={styles.field}>
-                <span className={styles.eyebrow}>Active profile</span>
-                <select
-                  className={styles.control}
-                  value={data.profile?.id ?? ""}
-                  onChange={(event) => {
-                    setActiveProfileId(event.target.value);
+    <div>
+      <PageHeader
+        title={profile?.name ? `${possessive(profile.name)} fitness` : "Fitness"}
+        description="A weekly activity plan that fits your health, time and equipment. Log each day to see what is working."
+        actions={
+          profile ? (
+            <>
+              <ProfileSwitcher
+                profiles={data.profiles}
+                activeId={profile.id}
+                onChange={(id) => {
+                  setActiveProfileId(id);
+                  refresh();
+                }}
+              />
+              <LinkButton variant="ghost" href="/lifeengine/fitness/profile">
+                Edit profile
+              </LinkButton>
+            </>
+          ) : null
+        }
+      />
+
+      {!profile ? (
+        <div className="space-y-4">
+          <ProfileSourcePicker />
+          <p className="mx-auto max-w-2xl text-sm text-gray-500">
+            Just browsing?{" "}
+            <Link href="/lifeengine/fitness/activities" className="font-medium text-indigo-600 hover:text-indigo-700">
+              Open the activity library
+            </Link>
+            .
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* ---------------- today ---------------- */}
+          <Card>
+            <SectionHeading
+              title="Today"
+              action={data.plan ? loggedToday ? <Badge tone="good">Logged</Badge> : <Badge>Not logged yet</Badge> : null}
+            />
+            {!data.plan ? (
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-600">The profile is saved. Build a plan from it when you are ready.</p>
+                <Button
+                  onClick={() => {
+                    saveFitnessPlan(buildFitnessPlan(profile, { weeks: 4 }));
                     refresh();
                   }}
                 >
-                  {data.profiles.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <div className={styles.row}>
-              <Link className="btn" href="/lifeengine/fitness/profile">
-                {data.profile ? "Edit profile" : "Start here — build your profile"}
-              </Link>
-            </div>
-          </div>
-        </div>
-        <div className={styles.row}>
-          <Badge tone="neutral">{ACTIVITIES.length} activities</Badge>
-          <Badge tone="info">{INDOOR_COUNT} indoor</Badge>
-          <Badge tone="good">{OUTDOOR_COUNT} outdoor</Badge>
-          <Badge tone="neutral">{Object.keys(GOALS).length} purposes covered</Badge>
-          <Badge tone="neutral">{Object.keys(CONDITIONS).length} conditions handled</Badge>
-        </div>
-      </header>
-
-      {!data.profile ? (
-        <EmptyState
-          title="No profile yet"
-          actionHref="/lifeengine/fitness/profile"
-          actionLabel="Build your health profile"
-        >
-          <p>
-            The planner needs to know who it is planning for. Two identical-looking people with the same goal get very
-            different plans if one has knee arthritis and the other takes a beta blocker — and getting that wrong is
-            how exercise plans hurt people.
-          </p>
-          <p>Takes about five minutes. Everything stays in this browser.</p>
-        </EmptyState>
-      ) : (
-        <>
-          {/* ---------------- today ---------------- */}
-          <section className={styles.stack}>
-            <div className={styles.spread}>
-              <h2 className={styles.sectionTitle}>Today</h2>
-              {loggedToday ? <Badge tone="good">Logged</Badge> : <Badge tone="info">Not logged yet</Badge>}
-            </div>
-
-            {!data.plan ? (
-              <div className={styles.panel}>
-                <p className={styles.muted}>
-                  {data.profile.name}&rsquo;s profile is saved, but there is no plan yet.
-                </p>
-                <div className={styles.row}>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      saveFitnessPlan(buildFitnessPlan(data.profile!, { weeks: 4 }));
-                      refresh();
-                    }}
-                  >
-                    Build a 4-week plan
-                  </button>
-                </div>
+                  Build a 4-week plan
+                </Button>
               </div>
             ) : todayPlan ? (
-              <div className={styles.dayCard}>
-                <header className={styles.dayHeader}>
-                  <div>
-                    <div className={styles.dayName}>
+              <div className="mt-4 space-y-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900">
                       {todayPlan.weekday} · {todayPlan.focus}
-                    </div>
-                    <div className={styles.dayFocus}>{todayPlan.motivation}</div>
+                    </p>
+                    <p className="mt-0.5 max-w-prose text-sm text-gray-500">{todayPlan.motivation}</p>
                   </div>
-                  <div className={styles.row}>
+                  <div className="flex shrink-0 flex-wrap gap-1.5">
                     {todayPlan.isRestDay ? (
                       <Badge tone="good">Rest day</Badge>
                     ) : (
                       <>
-                        <Badge tone="neutral">{todayPlan.totalMinutes} min</Badge>
-                        <Badge tone="neutral">~{todayPlan.estimatedCalories} kcal</Badge>
+                        <Badge>{todayPlan.totalMinutes} min</Badge>
+                        <Badge>~{todayPlan.estimatedCalories} kcal</Badge>
                       </>
                     )}
                   </div>
-                </header>
-                <div className={styles.dayBody}>
-                  {todayPlan.blocks.map((block, index) => (
-                    <div key={`${block.activityId}-${index}`} className={styles.block}>
-                      <div className={styles.blockTop}>
-                        <span className={styles.blockName}>{block.name}</span>
-                        <span className={styles.blockRole}>
-                          {block.role} · {block.minutes} min
+                </div>
+                {todayPlan.blocks.length ? (
+                  <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                    {todayPlan.blocks.map((block, index) => (
+                      <li key={`${block.activityId}-${index}`} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{block.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {CATEGORY_LABELS[block.category]} · {block.environment} · effort {block.rpeTarget[0]} to {block.rpeTarget[1]} of 10
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-xs font-medium text-gray-500">
+                          {ROLE_LABEL[block.role] ?? block.role} · {block.minutes} min
                         </span>
-                      </div>
-                      <div className={styles.blockMeta}>
-                        {CATEGORY_LABELS[block.category]} · {block.environment} · effort {block.rpeTarget[0]}–
-                        {block.rpeTarget[1]}/10
-                        {block.prescription ? ` · ${block.prescription}` : ""}
-                      </div>
-                    </div>
-                  ))}
-                  <div className={styles.row}>
-                    <Link className="btn" href="/lifeengine/fitness/tracker">
-                      {loggedToday ? "Update today's log" : "Log this session"}
-                    </Link>
-                    <Link className="btn subtle" href="/lifeengine/fitness/planner">
-                      See the full week
-                    </Link>
-                  </div>
-                  <div className={styles.blockMeta}>
-                    Daily targets: {todayPlan.dailyTargets.steps.toLocaleString()} steps ·{" "}
-                    {(todayPlan.dailyTargets.waterMl / 1000).toFixed(1)} L water · {todayPlan.dailyTargets.proteinG} g
-                    protein · {todayPlan.dailyTargets.sleepHours} h sleep
-                  </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="text-xs text-gray-500">
+                  Daily targets: {todayPlan.dailyTargets.steps.toLocaleString()} steps · {(todayPlan.dailyTargets.waterMl / 1000).toFixed(1)} L water ·{" "}
+                  {todayPlan.dailyTargets.proteinG} g protein · {todayPlan.dailyTargets.sleepHours} h sleep
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <LinkButton href="/lifeengine/fitness/tracker">{loggedToday ? "Update today’s log" : "Log this session"}</LinkButton>
+                  <LinkButton variant="ghost" href="/lifeengine/fitness/planner">
+                    See the full week
+                  </LinkButton>
                 </div>
               </div>
             ) : null}
 
             {data.plan?.safety.blocksPlan ? (
-              <Alert tone="risk" title="Get assessed before starting">
-                Your screening answers flagged symptoms that need medical assessment first. The plan is visible so you
-                can discuss it with your doctor.
+              <Alert tone="risk" title="Get assessed before starting" className="mt-4">
+                Your screening answers flagged symptoms that need a doctor first. The plan is visible so you can discuss it with them.
               </Alert>
             ) : data.plan?.safety.level === "clearance_required" ? (
-              <Alert tone="warn" title="Medical clearance recommended">
+              <Alert tone="warn" title="Medical clearance recommended" className="mt-4">
                 Take this plan to your clinician before you start it.
               </Alert>
             ) : null}
-          </section>
+          </Card>
 
-          {/* ---------------- progress snapshot ---------------- */}
+          {/* ---------------- progress ---------------- */}
           {summary ? (
-            <section className={styles.stack}>
-              <h2 className={styles.sectionTitle}>Progress</h2>
-              <div className={`${styles.grid} ${styles.grid4}`}>
-                <Stat label="Streak" value={summary.streak.current} unit="days" hint={`Best ${summary.streak.longest}`} />
-                <Stat label="This week" value={summary.thisWeek.activeMinutes} unit="min" hint={`Target ${summary.thisWeek.targetMinutes}`} />
-                <Stat label="Sessions" value={summary.thisWeek.sessions} hint="This week" />
-                <Stat label="Adherence" value={summary.thisWeek.adherencePct} unit="%" hint="Planned sessions kept" />
+            <section className="space-y-4" aria-labelledby="progress-title">
+              <SectionHeading id="progress-title" title="Progress" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Stat label="Streak" value={summary.streak.current} unit="days" hint={`Best ${summary.streak.longest}`} icon={Flame} />
+                <Stat label="This week" value={summary.thisWeek.activeMinutes} unit="min" hint={`Target ${summary.thisWeek.targetMinutes}`} icon={Timer} />
+                <Stat label="Sessions" value={summary.thisWeek.sessions} hint="This week" icon={CalendarDays} />
+                <Stat label="Adherence" value={summary.thisWeek.adherencePct} unit="%" hint="Planned sessions kept" icon={Target} />
               </div>
-              <div className={styles.panel}>
-                <div className={styles.spread}>
-                  <span className={styles.muted}>Weekly active minutes</span>
-                  <span className={styles.tiny}>
-                    {summary.thisWeek.activeMinutes} / {summary.thisWeek.targetMinutes}
-                  </span>
+              <Card className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-gray-600">Weekly active minutes</span>
+                    <span className="tabular-nums text-gray-500">
+                      {summary.thisWeek.activeMinutes} / {summary.thisWeek.targetMinutes}
+                    </span>
+                  </div>
+                  <Meter value={summary.thisWeek.activeMinutes} max={summary.thisWeek.targetMinutes} label="Weekly active minutes" />
                 </div>
-                <Meter value={summary.thisWeek.activeMinutes} max={summary.thisWeek.targetMinutes} />
                 {summary.insights.slice(0, 2).map((insight) => (
-                  <Alert
-                    key={insight.title}
-                    tone={insight.level === "risk" ? "risk" : insight.level === "warn" ? "warn" : insight.level === "good" ? "good" : "info"}
-                    title={insight.title}
-                  >
-                    <span>{insight.detail}</span>
-                    {insight.action ? (
-                      <span>
-                        <strong>Do this: </strong>
-                        {insight.action}
-                      </span>
-                    ) : null}
+                  <Alert key={insight.title} tone={insightTone(insight.level)} title={insight.title}>
+                    <p>{insight.detail}</p>
+                    {insight.action ? <p className="font-medium">{insight.action}</p> : null}
                   </Alert>
                 ))}
-                <Link className="btn subtle" href="/lifeengine/fitness/tracker">
-                  Open the tracker →
-                </Link>
-              </div>
+                <LinkButton variant="subtle" size="sm" href="/lifeengine/fitness/tracker" className="-ml-3">
+                  Open the tracker
+                  <ChevronRight aria-hidden />
+                </LinkButton>
+              </Card>
             </section>
           ) : null}
-        </>
+
+          {/* ---------------- sections ---------------- */}
+          <section className="space-y-4" aria-labelledby="explore-title">
+            <SectionHeading id="explore-title" title="Explore" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {SECTIONS.map(({ href, title, body, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="group flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-gray-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <Icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-gray-900">{title}</span>
+                    <span className="mt-0.5 block text-sm text-gray-500">{body}</span>
+                  </span>
+                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-600" aria-hidden />
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* ---------------- people ---------------- */}
+          <Card className="space-y-4">
+            <SectionHeading
+              title="People"
+              description="Everyone set up for fitness. Their plans and logs are kept separately."
+              action={
+                <>
+                  <Button variant="subtle" size="sm" onClick={download}>
+                    <Download aria-hidden />
+                    Export
+                  </Button>
+                  <Button variant="subtle" size="sm" onClick={() => fileRef.current?.click()}>
+                    <Upload aria-hidden />
+                    Import
+                  </Button>
+                  <LinkButton variant="ghost" size="sm" href="/lifeengine/fitness/profile?new=1">
+                    <UserPlus aria-hidden />
+                    Add person
+                  </LinkButton>
+                </>
+              }
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Import fitness data file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void upload(file);
+                event.target.value = "";
+              }}
+            />
+            {status ? (
+              <div role="status">
+                <Alert tone={status.tone}>{status.text}</Alert>
+              </div>
+            ) : null}
+            <ul className="divide-y divide-gray-100">
+              {data.profiles.map((entry) => {
+                const active = entry.id === profile.id;
+                return (
+                  <li key={entry.id} className="py-4 first:pt-0 last:pb-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <ProfileAvatar name={entry.name || "?"} seed={entry.sourceProfileId ?? entry.id} size="md" />
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
+                            {entry.name || "Unnamed"}
+                            {active ? <Badge tone="good">Active</Badge> : null}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {entry.age} yrs · {SEX_LABEL[entry.sex] ?? entry.sex} · {entry.heightCm} cm · {entry.weightKg} kg
+                          </p>
+                          <p className="mt-1 text-sm text-gray-700">
+                            {GOALS[entry.primaryGoal]?.label ?? entry.primaryGoal} · {entry.daysPerWeek} days a week, {entry.minutesPerSession} min
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {entry.conditions.length
+                              ? entry.conditions.map((id) => CONDITIONS[id]?.label ?? id).join(", ")
+                              : "No conditions reported"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                        {confirmDelete === entry.id ? (
+                          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2" role="group" aria-label={`Delete ${entry.name}`}>
+                            <span className="text-sm text-red-800">Delete with its plans and logs?</span>
+                            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => {
+                                deleteFitnessProfile(entry.id);
+                                setConfirmDelete(null);
+                                refresh();
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            {!active ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setActiveProfileId(entry.id);
+                                  refresh();
+                                }}
+                              >
+                                Make active
+                              </Button>
+                            ) : null}
+                            <Button variant="subtle" size="sm" onClick={() => setConfirmDelete(entry.id)} aria-label={`Delete ${entry.name || "profile"}`}>
+                              <Trash2 aria-hidden />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </div>
       )}
 
-      {/* ---------------- navigation ---------------- */}
-      <section className={styles.stack}>
-        <h2 className={styles.sectionTitle}>Everything in here</h2>
-        <div className={`${styles.grid} ${styles.grid2}`}>
-          <Link className={styles.linkCard} href="/lifeengine/fitness/profile">
-            <span className={styles.linkTitle}>Health profile</span>
-            <span className={styles.muted}>
-              Age, sex, body measurements, goals, conditions, medications, pain map, injuries, safety screen, equipment
-              and availability. The input that decides everything else.
-            </span>
-          </Link>
-          <Link className={styles.linkCard} href="/lifeengine/fitness/planner">
-            <span className={styles.linkTitle}>Activity plan</span>
-            <span className={styles.muted}>
-              Your week, day by day and block by block, with intensity targets, modifications, indoor fallbacks and the
-              reasoning behind each choice.
-            </span>
-          </Link>
-          <Link className={styles.linkCard} href="/lifeengine/fitness/tracker">
-            <span className={styles.linkTitle}>Daily tracker</span>
-            <span className={styles.muted}>
-              Tick off sessions, log pain, sleep, mood, steps, weight and blood pressure, then read the streaks,
-              trends and warnings that come out of it.
-            </span>
-          </Link>
-          <Link className={styles.linkCard} href="/lifeengine/fitness/activities">
-            <span className={styles.linkTitle}>Activity library</span>
-            <span className={styles.muted}>
-              All {ACTIVITIES.length} activities with instructions, form cues, progressions and regressions — filter by
-              category, indoor or outdoor, purpose and impact.
-            </span>
-          </Link>
-        </div>
-      </section>
-
-      {/* ---------------- profile management ---------------- */}
-      {data.profiles.length ? (
-        <section className={styles.panel}>
-          <div className={styles.spread}>
-            <h2 className={styles.sectionTitle}>Profiles</h2>
-            <div className={styles.row}>
-              <button type="button" className="btn subtle sm" onClick={download}>
-                Export data
-              </button>
-              <Link className="btn subtle sm" href="/lifeengine/fitness/profile">
-                + New profile
-              </Link>
-            </div>
-          </div>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Main goal</th>
-                  <th>Conditions</th>
-                  <th>Availability</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.profiles.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      <strong>{entry.name || "Unnamed"}</strong>
-                      <br />
-                      <span className={styles.tiny}>
-                        {entry.age}y · {entry.sex} · {entry.heightCm} cm · {entry.weightKg} kg
-                      </span>
-                    </td>
-                    <td>{GOALS[entry.primaryGoal]?.label ?? entry.primaryGoal}</td>
-                    <td className={styles.tiny}>
-                      {entry.conditions.length
-                        ? entry.conditions.map((id) => CONDITIONS[id]?.label ?? id).join(", ")
-                        : "None reported"}
-                    </td>
-                    <td className={styles.tiny}>
-                      {entry.daysPerWeek}×/week · {entry.minutesPerSession} min · {entry.environmentPreference}
-                    </td>
-                    <td>
-                      <div className={styles.row}>
-                        {entry.id !== data.profile?.id ? (
-                          <button
-                            type="button"
-                            className="btn subtle sm"
-                            onClick={() => {
-                              setActiveProfileId(entry.id);
-                              refresh();
-                            }}
-                          >
-                            Use
-                          </button>
-                        ) : (
-                          <Badge tone="good">Active</Badge>
-                        )}
-                        <button
-                          type="button"
-                          className="btn subtle sm"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete ${entry.name || "this profile"}? This also removes its plans and all logged history. This cannot be undone.`,
-                              )
-                            ) {
-                              deleteFitnessProfile(entry.id);
-                              refresh();
-                            }
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
-
-      <footer className={styles.panel}>
-        <span className={styles.eyebrow}>Important</span>
-        <p className={styles.tiny}>
-          This planner is general wellness guidance, not medical advice, diagnosis or treatment. It does not replace
-          your doctor, physiotherapist or any programme they have given you — where the two differ, follow theirs.
-          Stop exercising and seek medical help for chest pain or pressure, severe breathlessness, dizziness or
-          fainting, sudden severe headache, or new numbness or weakness. All data stays in this browser and is never
-          sent anywhere.
-        </p>
-      </footer>
+      <p className="mt-8 max-w-prose text-xs text-gray-500">
+        General wellness guidance, not medical advice. If your doctor or physiotherapist has given you a programme, follow theirs. Stop and get help
+        for chest pain, severe breathlessness, dizziness, a sudden severe headache, or new numbness or weakness.
+      </p>
     </div>
   );
 }

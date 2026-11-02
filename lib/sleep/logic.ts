@@ -356,3 +356,9 @@ export function upsertEntry(entries: SleepEntry[], entry: SleepEntry): SleepEntr
   const others = entries.filter((e) => e.id !== entry.id && e.night !== entry.night);
   return [...others, entry].sort((a, b) => (a.night < b.night ? 1 : a.night > b.night ? -1 : 0));
 }
+
+/** The entry for last night (the evening before `today`), if it is logged. */
+export function lastNightEntry<T extends Pick<SleepEntry, "night">>(entries: T[], today: string): T | undefined {
+  const night = addDays(today, -1);
+  return entries.find((e) => e.night === night);
+}

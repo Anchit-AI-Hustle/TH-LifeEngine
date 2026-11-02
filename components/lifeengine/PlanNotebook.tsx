@@ -51,6 +51,8 @@ export interface Meal {
 
 export interface DayPlan {
   day: number;
+  /** Short theme shown with the day: "Active recovery". */
+  theme?: string;
   yoga?: YogaPose[];
   exercise?: Exercise[];
   meals?: {
@@ -127,6 +129,8 @@ function toViewDay(day: DayPlan): ViewDay {
 
   return {
     label: `Day ${day.day}`,
+    sublabel: day.theme,
+    short: day.theme,
     note: day.notes,
     yoga: poses.length
       ? {
@@ -163,7 +167,7 @@ function toViewDay(day: DayPlan): ViewDay {
 /** Full-page reader for a notebook-style plan (used by the plan demo). */
 export default function PlanNotebook({ data, onClose }: PlanNotebookProps) {
   const days = useMemo(() => data.plan.map(toViewDay), [data.plan]);
-  const items = useMemo(() => days.map(({ label }) => ({ label })), [days]);
+  const items = useMemo(() => days.map(({ label, sublabel, short }) => ({ label, sublabel, short })), [days]);
   const [currentDay, setCurrentDay] = useState(0);
   const [exportOpen, setExportOpen] = useState(false);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
@@ -243,6 +247,7 @@ export default function PlanNotebook({ data, onClose }: PlanNotebookProps) {
         <PlanReader
           items={items}
           idPrefix="notebook"
+          progressId={data.planId ?? null}
           onChange={setCurrentDay}
           renderDay={(index, { headingId, stepper }) => (
             <PlanDayView day={days[index]} idPrefix={`nb-day-${index}`} headingId={headingId} titleActions={stepper} />
