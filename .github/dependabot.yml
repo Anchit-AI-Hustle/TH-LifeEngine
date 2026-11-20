@@ -4,6 +4,12 @@ updates:
     directory: "/"
     schedule: { interval: "weekly" }
     open-pull-requests-limit: 5
+    ignore:
+      # Tailwind 4 moves the PostCSS plugin to @tailwindcss/postcss and changes
+      # how styles are configured; the bump alone breaks the build. Migrate on
+      # purpose, not through an automatic bump.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: { interval: "monthly" }
