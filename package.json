@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.118.0",
+    "@supabase/supabase-js": "^2.119.0",
     "@types/pg": "^8.23.1",
     "@types/uuid": "^10.0.0",
     "@vercel/blob": "^0.23.4",
