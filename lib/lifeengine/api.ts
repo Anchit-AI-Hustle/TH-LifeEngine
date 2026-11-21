@@ -132,7 +132,7 @@ async function requestPlan(payload: any): Promise<PlanGenerationResponse> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }, 180000);
+    }, 285000); // the server gives up at 260s (generate/route.ts) and must still answer
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
