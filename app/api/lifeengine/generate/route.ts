@@ -93,9 +93,12 @@ const SHORT_PLAN_FAST_LANE_MODEL = process.env.GEMINI_FAST_MODEL || STANDARD_PLA
 // (free-tier keys get no gemini-2.5-pro quota at all), so the plan still comes
 // from the AI instead of failing in a second.
 const QUOTA_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || GEMINI_LIGHT_MODEL;
+// Thinking models can take 2-3 minutes for a 7-day plan. The cap stays under
+// the function's 300s maxDuration (vercel.json), so a slow answer still ends
+// in our own timeout and the built-in fallback plan, not a killed function.
 const DEFAULT_BASE_TIMEOUT_MS = 90000;
-const PER_DAY_TIMEOUT_MS = 15000;
-const MAX_TIMEOUT_MS = 300000;
+const PER_DAY_TIMEOUT_MS = 22000;
+const MAX_TIMEOUT_MS = 260000;
 
 class GenerationTimeoutError extends Error {
   timeoutMs: number;
